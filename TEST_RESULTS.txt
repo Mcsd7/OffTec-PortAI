@@ -1,0 +1,9 @@
+OffTec PortAI 0.2.1 — testes executados no ambiente de empacotamento
+
+Comando: python -m py_compile portai.py
+Resultado: OK
+
+Comando: python -m unittest discover -s tests -v
+Resultado: 3 testes passaram.
+
+Observação: o teste automatizado não substitui a validação no Termux do usuário, nem garante que todo projeto Windows seja portável para Android.

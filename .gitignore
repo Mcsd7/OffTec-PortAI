@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Saídas locais do PortAI
+reports/*
+!reports/.gitkeep
+workspaces/
+
+# Ferramentas e artefatos de build
+.pytest_cache/
+.coverage
+build/
+dist/
+*.apk
+*.aab
