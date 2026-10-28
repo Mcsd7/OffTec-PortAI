@@ -1,41 +1,42 @@
-# OffTec PortAI 0.2.1
+# OffTec PortAI
 
-Assistente experimental de análise e adaptação de projetos Windows para Android, desenvolvido para Termux ARM64.
+**Assistente experimental para analisar projetos Windows e apoiar sua adaptação para Android no Termux.**
+
+O PortAI identifica tecnologias e dependências que podem exigir ajustes, gera relatórios e, opcionalmente, usa o Codex CLI para trabalhar em uma cópia isolada do projeto.
+
+> O PortAI não converte automaticamente qualquer programa Windows em um aplicativo Android. Os resultados da análise são heurísticos e devem ser revisados.
 
 ## Recursos
 
-- Interface de terminal com Rich em tema roxo brilhante.
-- Busca automática limitada a diretórios configurados, incluindo `~/simple-calculator` quando existir; não percorre todo o armazenamento.
-- Opção para selecionar manualmente um diretório adicional na tela de projetos.
-- Descoberta baseada em arquivos de configuração na raiz, com classificação incerta separada como `Precisa de análise`.
-- Lista de projetos encontrados para selecionar por número, sem digitar caminho absoluto.
-- Exibe arquivos `.exe` detectados como referência; não promete converter binários fechados.
-- Análise estática de arquivos de código e build.
-- Indicadores heurísticos de APIs Windows, DirectX, Registry e WPF/.NET.
-- Relatórios Markdown e JSON.
-- Integração opcional com Codex CLI por `codex exec`.
-- Cria uma cópia de trabalho isolada em `workspaces/` antes de chamar o Codex.
-- Sem root e sem bibliotecas obrigatórias além de Rich.
+- Descoberta de projetos em diretórios configurados e seleção manual de pastas.
+- Análise estática de arquivos de código e configuração de build.
+- Identificação heurística de referências a APIs Windows, DirectX, Registry e WPF/.NET.
+- Relatórios em Markdown e JSON.
+- Integração opcional com Codex CLI em uma cópia de trabalho isolada.
+- Fluxo de build que verifica se o APK gerado é válido como arquivo ZIP e contém `AndroidManifest.xml`.
 
 ## Requisitos
 
 - Python 3.10 ou superior.
-- Termux recomendado.
-- `rich`.
-- Para o recurso Codex: Codex CLI instalado, autenticado e com conexão à internet.
-- Para compilar APKs: Java e SDK Android/Gradle compatíveis com o projeto adaptado. A opção de build só reporta sucesso com APK não vazio e ZIP válido contendo AndroidManifest.xml.
+- Termux em dispositivo ARM64 (ambiente recomendado).
+- `rich`, instalado pelo arquivo `requirements.txt`.
+- Codex CLI autenticado para os recursos de assistência com Codex.
+- Java, Android SDK e Gradle compatíveis com o projeto para compilar APKs.
 
-## Instalação no Termux
+## Instalação
+
+No Termux:
 
 ```bash
 pkg update
 pkg install python git
-cd ~/OffTec-PortAI
+git clone https://github.com/Mcsd7/OffTec-PortAI.git
+cd OffTec-PortAI
 python -m pip install -r requirements.txt
 python portai.py
 ```
 
-Se `pip` recusar instalação por política do ambiente, use um ambiente virtual:
+Se o ambiente bloquear a instalação global de pacotes, use um ambiente virtual:
 
 ```bash
 python -m venv .venv
@@ -44,39 +45,35 @@ python -m pip install -r requirements.txt
 python portai.py
 ```
 
-## Codex
+## Integração com Codex
 
-Confira a autenticação:
+Instale e autentique o Codex CLI antes de usar esse recurso:
 
 ```bash
 codex login status
 ```
 
-No menu, selecione `5`, escolha um projeto e confirme a cópia isolada. A primeira análise acontece uma vez; a cópia e o estado ficam em `workspaces/` e são reutilizados quando o mesmo projeto for selecionado novamente. O submenu permite analisar, reconstruir, conversar com o Codex, compilar, ver progresso, abrir o APK e retomar uma sessão quando a CLI disponibilizar um ID.
+No PortAI, abra a opção de assistência com Codex e selecione um projeto. O aplicativo cria ou reutiliza uma cópia em `workspaces/`, preservando os arquivos originais. A partir dela, é possível solicitar análise e alterações, acompanhar a execução e iniciar o build quando o projeto oferecer suporte.
 
-A conversa interativa retorna ao PortAI quando você sair do Codex. Execuções automatizadas preservam saída, erro, código de retorno e histórico de instruções. Um estado sem ID de sessão continua disponível para novas instruções no mesmo workspace, sem forçar outra cópia ou análise inicial. `Ctrl+C` preserva o workspace e marca a tarefa como interrompida.
+A integração depende da versão instalada do Codex CLI. Consulte `codex exec --help` se a CLI não aceitar algum comando ou opção. Evite selecionar projetos que contenham credenciais, tokens ou outros dados privados.
 
-O PortAI consulta o Codex através de `codex exec` e, se um ID for retornado, `codex exec resume <ID>`. A compatibilidade exata depende da versão instalada; confira `codex --help`, `codex exec --help` e `codex exec resume --help` no dispositivo. Se a CLI não iniciar, o erro aparece no estado da tarefa.
+## Limitações
 
-Se a sua versão do Codex não aceitar alguma opção de `codex exec`, consulte `codex exec --help` e ajuste a integração. A CLI pode mudar entre versões. Não use projetos que contenham credenciais, tokens ou dados privados.
+- A análise é estática e heurística; não substitui compilação, execução ou revisão manual.
+- Arquivos `.exe` são exibidos como referência, mas não são convertidos em APK.
+- DirectX, DRM, drivers, bibliotecas fechadas e dependências complexas do Windows podem exigir reimplementação.
+- Um executável Linux ARM64 não é automaticamente um aplicativo Android.
+- Um APK estruturalmente válido ainda precisa ser instalado e testado no dispositivo.
+- A assistência com Codex requer autenticação e acesso ao serviço.
 
-## Limitações importantes
+## Estrutura do projeto
 
-- Esta versão faz análise estática heurística, não uma conversão universal.
-- Não transforma um `.exe` fechado em APK.
-- Não converte automaticamente DirectX, DRM, drivers, bibliotecas fechadas ou dependências Windows complexas.
-- O assistente Codex pode editar a cópia de trabalho, mas o resultado deve ser revisado e testado.
-- Um executável Linux ARM64 rodando no Termux não é automaticamente um APK Android.
-- APKs nativos exigem estrutura Android, bibliotecas compatíveis, empacotamento e testes no dispositivo.
-- A execução do Codex depende da autenticação e da disponibilidade do serviço.
-
-## Pastas
-
-- `portai.py`: aplicativo.
-- `reports/`: relatórios gerados.
-- `workspaces/`: cópias isoladas para assistência Codex.
-- `samples/demo_windows/`: exemplo didático, não executável no Android.
+- `portai.py`: aplicativo de terminal.
+- `samples/demo_windows/`: exemplo didático de projeto Windows.
+- `tests/`: testes automatizados.
+- `reports/`: destino dos relatórios gerados.
+- `workspaces/`: cópias de trabalho criadas durante o uso do Codex.
 
 ## Licença
 
-MIT. Consulte `LICENSE`.
+Distribuído sob a licença MIT. Consulte [`LICENSE`](LICENSE).
