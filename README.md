@@ -12,6 +12,8 @@ O PortAI identifica tecnologias e dependências que podem exigir ajustes, gera r
 - Análise estática de arquivos de código e configuração de build.
 - Identificação heurística de referências a APIs Windows, DirectX, Registry e WPF/.NET.
 - Relatórios em Markdown e JSON.
+- Universal Translation Engine modular para JSON, XML/Android resources, TXT, CSV, PO, RESX, properties, INI e YAML.
+- Propostas de tradução revisadas antes da aplicação, com placeholders protegidos, cópias localizadas e relatórios JSON.
 - Integração opcional com Codex CLI em uma cópia de trabalho isolada.
 - Fluxo de build que verifica se o APK gerado é válido como arquivo ZIP e contém `AndroidManifest.xml`.
 
@@ -57,6 +59,38 @@ No PortAI, abra a opção de assistência com Codex e selecione um projeto. O ap
 
 A integração depende da versão instalada do Codex CLI. Consulte `codex exec --help` se a CLI não aceitar algum comando ou opção. Evite selecionar projetos que contenham credenciais, tokens ou outros dados privados.
 
+## Universal Translation Engine
+
+No menu, escolha **Traduzir projeto**, informe a pasta, o idioma de origem, os idiomas de destino e uma pasta de saída fora do projeto. Os originais são somente lidos. Traduções existentes na pasta de saída recebem backup em `backups/` antes de serem substituídas. Cada proposta precisa de aprovação explícita; strings sem proposta ou aprovação aparecem no relatório.
+
+Idiomas iniciais: `pt-BR`, `en`, `es`, `ar` e `hi`. Recursos Android são gravados em pastas `values-pt-rBR`, `values-en`, `values-es`, `values-ar` e `values-hi`. O relatório de metadados marca árabe como RTL; layouts devem ser revisados e o aplicativo Android deve declarar suporte RTL quando apropriado. Fontes e renderização de glifos árabes/Devanagari dependem do projeto Android e do dispositivo.
+
+O padrão é `offline-review`, que não finge traduzir: deixa entradas pendentes. Para ligar uma API, serviço ou modelo local, configure um adaptador que implemente `TranslationProvider` e indique-o com `PORTAI_TRANSLATION_PROVIDER=meu_modulo:MinhaClasse`. O adaptador recebe uma lista de strings com contexto/IDs e os idiomas de origem/destino; deve implementar `translate(entries, target, source)` e retornar `{entry_id: texto}`. Segredos devem ser lidos pelo adaptador de variáveis de ambiente ou armazenamento seguro do serviço, nunca gravados no repositório.
+
+Também é possível configurar `PORTAI_TRANSLATION_COMMAND` com um executável local ou bridge do serviço. O processo recebe JSON UTF-8 pela entrada padrão (`source_language`, `target_language` e `entries` com `id`, `path`, `key`, `format`, `text`, `context`) e devolve pela saída padrão um objeto JSON de IDs para traduções. O contexto pode indicar diálogo, menu, missão, configuração ou mensagem conforme os nomes encontrados. Esse é o contrato do adaptador PortAI, não uma API de terceiros. O processo pode buscar credenciais do próprio ambiente; não passe chaves como argumentos de linha de comando.
+
+O motor preserva IDs estruturais, faz validação de placeholders e não altera a árvore de origem. PO simples mantém `msgid` e preenche `msgstr` na cópia localizada; entradas PO plurais são identificadas como não suportadas e ficam sem alteração. XML é serializado novamente na cópia gerada; namespaces e formatação podem mudar, então valide a saída no projeto consumidor. YAML, properties, TXT e outros dialetos são tratados como texto simples; valide a saída no projeto consumidor.
+
+## Tradução de APK Android
+
+No menu, escolha **Traduzir APK Android**, selecione o APK, idioma de origem e um destino (`en`, `es`, `ar` ou `hi`), depois informe a keystore e o alias que você controla. O fluxo requer `apktool`, Java e `apksigner`; `jadx` e `zipalign` são complementares. O Apktool decodifica em um workspace novo sob `workspaces/`; somente XML base de `res/values/` é passado ao Universal Translation Engine. Após revisão das propostas, os novos recursos são inseridos na cópia decodificada, reconstruídos, assinados e verificados. Para árabe, `android:supportsRtl="true"` é habilitado no Manifest da cópia e o Manifest original decodificado é guardado no backup do workspace. O APK original é conferido por SHA-256 antes e depois.
+
+As senhas são solicitadas sem eco e fornecidas ao `apksigner` por variáveis de ambiente do subprocesso. Elas não são gravadas no relatório. Use exclusivamente uma keystore sua: o PortAI não extrai, cria nem reutiliza chaves do APK original. Reconstrução e assinatura podem invalidar atualizações sobre a instalação original, que foi assinada com outra chave.
+
+O relatório `apk-translation-report.json` fica no workspace e registra pacote, versões, ABIs nativas detectadas, ferramentas, avisos, erros, recursos modificados, verificação de assinatura e caminho de saída. APKs split precisam do conjunto compatível completo; este fluxo processa apenas o APK selecionado e avisa quando encontra indícios de splits. Bibliotecas nativas são preservadas pelo Apktool, mas não traduzidas nem recompiladas. JADX serve apenas para inspeção complementar. O fluxo não contorna DRM, licenças ou proteções de terceiros. A validação ZIP e `apksigner verify` não substitui instalação e teste no dispositivo.
+
+## AI Game Recreation Engine
+
+No menu, escolha **AI Game Recreation Engine** e informe a raiz do projeto. A análise somente lê o projeto e tenta identificar Unity, Unreal Engine, Godot, GameMaker ou um projeto personalizado; também registra linguagens, manifests de dependências, controles de teclado/mouse, APIs desktop, resolução, gráficos, assets e arquivos candidatos. A detecção é heurística: confirme as evidências e o plano nos relatórios Markdown/JSON.
+
+O fluxo oferece uma cópia isolada em `workspaces/`, reutiliza o estado e a sessão persistente do Codex, e começa em revisão somente leitura. Para solicitar alterações, selecione os arquivos candidatos autorizados; um backup recuperável é criado antes da chamada e o progresso registra arquivos modificados e alterações fora da lista. O sandbox do Codex limita a escrita à workspace; a lista autorizada também é enviada no pedido e verificada após a execução. Revise o diff antes de usar o resultado. A recuperação restaura os arquivos autorizados daquele backup.
+
+Não há conversão universal nem build de engine simulada. O plano indica a toolchain provável: Unity com módulo Android, Unreal com toolchain Android, Godot com templates de exportação, ou GameMaker com runtime/export correspondente. Essas compilações normalmente precisam de Linux, Windows ou macOS configurado. A opção de build executa Gradle somente quando encontra configuração de aplicativo Android no workspace; o resultado só é contado se a execução gerar um APK novo e válido. Código nativo, plugins, splits e dependências de engine continuam sujeitos a revisão e teste no dispositivo.
+
+## Idioma da interface
+
+Abra **Configurações** no menu principal para escolher Português brasileiro, inglês, espanhol, árabe ou hindi. A escolha fica em `~/.config/offtec-portai/settings.json` (ou no diretório `XDG_CONFIG_HOME` quando definido); se a configuração estiver ausente ou inválida, o PortAI usa português brasileiro. O catálogo é offline e centralizado em `portai_i18n.py`, para que novas mensagens possam ser adicionadas sem alterar o Universal Translation Engine, que continua destinado à localização de conteúdo de projetos. Identificadores técnicos, comandos, nomes de ferramentas e caminhos são preservados. O árabe usa caracteres Unicode e isolates bidirecionais; a apresentação RTL depende do terminal e da fonte instalados.
+
 ## Limitações
 
 - A análise é estática e heurística; não substitui compilação, execução ou revisão manual.
@@ -69,6 +103,7 @@ A integração depende da versão instalada do Codex CLI. Consulte `codex exec -
 ## Estrutura do projeto
 
 - `portai.py`: aplicativo de terminal.
+- `game_portability.py`: análise heurística e relatórios de portabilidade de jogos.
 - `samples/demo_windows/`: exemplo didático de projeto Windows.
 - `tests/`: testes automatizados.
 - `reports/`: destino dos relatórios gerados.

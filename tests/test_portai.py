@@ -6,6 +6,7 @@ import sys
 import os
 import stat
 import subprocess
+import zipfile
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -257,9 +258,29 @@ class PortAITests(unittest.TestCase):
         self.assertEqual(command[:4], ["codex", "exec", "resume", "thread-123"])
         self.assertEqual(command[command.index("--cd") + 1], "/tmp/project")
 
-    def test_option_five_dispatches_persistent_submenu(self):
-        with patch.object(portai.Prompt, "ask", side_effect=["5", "", "0"]), \
+    def test_codex_commands_accept_explicit_read_only_sandbox(self):
+        initial = portai.codex_exec_command("codex", Path("/tmp/work"), "review", sandbox="read-only")
+        resumed = portai.codex_resume_command("codex", Path("/tmp/work"), "thread-123", sandbox="read-only")
+        self.assertEqual(initial[initial.index("--sandbox") + 1], "read-only")
+        self.assertEqual(resumed[resumed.index("--sandbox") + 1], "read-only")
+
+    def test_game_portability_category_returns_to_main_menu(self):
+        with patch.object(portai.Prompt, "ask", side_effect=["4", "1", "0", "0"]), \
+             patch.object(portai, "game_recreation_menu") as sub, \
+             patch.object(portai, "banner"), patch.object(portai.console, "print"):
+            portai.menu()
+        sub.assert_called_once_with("1")
+
+    def test_projects_codex_option_dispatches_persistent_submenu(self):
+        with patch.object(portai.Prompt, "ask", side_effect=["1", "2", "0", "0"]), \
              patch.object(portai, "reconstruction_menu") as sub, \
+             patch.object(portai, "banner"), patch.object(portai.console, "print"):
+            portai.menu()
+        sub.assert_called_once_with()
+
+    def test_apk_build_center_category_dispatches_and_returns(self):
+        with patch.object(portai.Prompt, "ask", side_effect=["2", "0", "0"]), \
+             patch.object(portai, "apk_build_center_menu") as sub, \
              patch.object(portai, "banner"), patch.object(portai.console, "print"):
             portai.menu()
         sub.assert_called_once_with()
@@ -277,6 +298,43 @@ class PortAITests(unittest.TestCase):
             code, _, _, apk = portai.run_build(workspace)
             self.assertEqual(code, 1)
             self.assertIsNone(apk)
+
+    def test_termux_gradle_build_prioritizes_its_native_library_for_aapt2(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            prefix = root / "termux"
+            (prefix / "lib").mkdir(parents=True)
+            (prefix / "lib" / "libc++_shared.so").touch()
+            aapt2 = prefix / "bin" / "aapt2"
+            aapt2.parent.mkdir()
+            aapt2.touch()
+            project = root / "project"
+            project.mkdir()
+            (project / "gradlew").write_text("#!/bin/sh\n", encoding="utf-8")
+            apk = project / "app" / "build" / "outputs" / "apk" / "debug" / "app.apk"
+            apk.parent.mkdir(parents=True)
+            with zipfile.ZipFile(apk, "w") as package:
+                package.writestr("AndroidManifest.xml", b"manifest")
+
+            def fake_run(_command, **kwargs):
+                self.assertEqual(
+                    kwargs["env"]["LD_LIBRARY_PATH"],
+                    str(prefix / "lib") + os.pathsep + "/some/other/native/libs",
+                )
+                return subprocess.CompletedProcess([], 0, "done", "")
+
+            old_console = portai.console
+            portai.console = portai.Console(file=StringIO(), force_terminal=False, color_system=None)
+            try:
+                with patch.dict(os.environ, {"PREFIX": str(prefix), "LD_LIBRARY_PATH": "/some/other/native/libs"}), \
+                     patch.object(portai.shutil, "which", side_effect=lambda name: str(aapt2) if name == "aapt2" else None), \
+                     patch.object(portai.subprocess, "run", side_effect=fake_run), \
+                     patch.object(portai, "find_apk", return_value=apk):
+                    code, _stdout, _stderr, built_apk = portai.run_build(project)
+            finally:
+                portai.console = old_console
+            self.assertEqual(code, 0)
+            self.assertEqual(built_apk, apk)
 
     def test_codex_error_is_saved_and_reported_without_losing_state(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -15,12 +15,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from portai_i18n import (
+    LOCALES, LOCALE_NAMES, ask_confirm, ask_prompt, get_locale, save_locale,
+    translate_text,
+)
+
 try:
     from rich import box
     from rich.align import Align
     from rich.console import Console
     from rich.panel import Panel
-    from rich.prompt import Confirm, Prompt
+    from rich.prompt import Prompt
     from rich.table import Table
     from rich.text import Text
     from rich.traceback import install as install_rich_traceback
@@ -29,11 +34,19 @@ except ImportError:
     raise SystemExit(1)
 
 install_rich_traceback(show_locals=False)
-console = Console()
+
+
+class LocalizedConsole(Console):
+    """Translate known UI phrases at Rich's string rendering boundary."""
+    def render_str(self, text: str, *args: Any, **kwargs: Any):
+        return super().render_str(translate_text(text), *args, **kwargs)
+
+
+console = LocalizedConsole()
 ROOT = Path(__file__).resolve().parent
 REPORTS = ROOT / "reports"
 WORKSPACES = ROOT / "workspaces"
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 MAX_FILES = 3000
 MAX_TEXT_BYTES = 1_000_000
 MAX_SCAN_DIRS = 25000
@@ -92,12 +105,12 @@ def banner() -> None:
     content = Align.center(Text.assemble(logo, "\n", subtitle))
     console.print()
     console.print(Panel(content, border_style="bright_magenta", box=box.DOUBLE, padding=(1, 2)))
-    console.print(Align.center(Text("Análise estática • cópias isoladas • integração com Codex CLI", style="dim")))
+    console.print(Align.center(Text(translate_text("Análise estática • cópias isoladas • integração com Codex CLI"), style="dim")))
     console.print()
 
 def section(title: str) -> None:
     console.print()
-    console.print(Panel(Text(title, style="bold bright_magenta"), border_style="magenta", box=box.ROUNDED))
+    console.print(Text(translate_text(title), style="bold bright_magenta"))
 
 def yesno(value: bool) -> str:
     return "[bright_green]OK[/]" if value else "[yellow]NÃO ENCONTRADO[/]"
@@ -114,12 +127,8 @@ def check_environment() -> None:
         ("ANDROID_HOME", os.environ.get("ANDROID_HOME", "(não definido)")),
         ("SDK em ~/android-sdk", "presente" if (Path.home() / "android-sdk").is_dir() else "não encontrado"),
     ]
-    table = Table(box=box.SIMPLE_HEAVY, header_style="bold bright_magenta")
-    table.add_column("Componente", style="white")
-    table.add_column("Estado", style="bright_cyan")
     for a, b in rows:
-        table.add_row(a, b)
-    console.print(table)
+        console.print(f"[white]{a}:[/] [bright_cyan]{b}[/]")
     codex = shutil.which("codex")
     if codex:
         try:
@@ -292,7 +301,7 @@ def select_project() -> Path | None:
     projects, executables = discover_projects()
     if not projects:
         console.print("[yellow]Nenhum projeto desktop com evidências suficientes foi encontrado.[/]")
-        chosen = Prompt.ask("Informe outra pasta de busca (Enter para voltar)", default="")
+        chosen = ask_prompt("Informe outra pasta de busca (Enter para voltar)", default="")
         if chosen:
             search = Path(chosen).expanduser()
             if search.is_dir():
@@ -300,7 +309,7 @@ def select_project() -> Path | None:
             else:
                 console.print("[yellow]Pasta inválida.[/]")
         if not projects:
-            Prompt.ask("Pressione Enter para voltar ao menu", default="")
+            ask_prompt("Pressione Enter para voltar ao menu", default="")
             return None
     else:
         table = Table(box=box.ROUNDED, border_style="bright_magenta", header_style="bold bright_magenta")
@@ -346,9 +355,9 @@ def select_project() -> Path | None:
     console.print(options)
     valid = [str(i) for i in range(len(projects) + 1)] + ["a"]
     console.print("[dim]Digite 'a' para buscar em outro diretório; isso não amplia a busca automática.[/]")
-    choice = Prompt.ask("Projeto", choices=valid, default="1" if projects else "0")
+    choice = ask_prompt("Projeto", choices=valid, default="1" if projects else "0")
     if choice == "a":
-        chosen = Prompt.ask("Diretório adicional")
+        chosen = ask_prompt("Diretório adicional")
         search = Path(chosen).expanduser()
         if search.is_dir():
             extra, extra_executables = discover_projects([search.resolve()])
@@ -377,7 +386,7 @@ def select_project_from_items(projects: list[dict[str, Any]]) -> Path | None:
     for index, item in enumerate(projects, 1):
         table.add_row(str(index), str(item["path"]), item["platform"], item.get("kind", "Projeto para análise"), item["reason"])
     console.print(table)
-    choice = Prompt.ask("Projeto", choices=[str(i) for i in range(len(projects) + 1)], default="1")
+    choice = ask_prompt("Projeto", choices=[str(i) for i in range(len(projects) + 1)], default="1")
     return None if choice == "0" else projects[int(choice) - 1]["path"]
 
 
@@ -464,7 +473,7 @@ def save_report(report: dict[str, Any]) -> tuple[Path, Path]:
     if not report["windows_indicators"]:
         lines.append("- Nenhum indicador conhecido detectado")
     lines += ["", "## Limitações"] + [f"- {x}" for x in report["limitations"]]
-    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    md_path.write_text(translate_text("\n".join(lines) + "\n"), encoding="utf-8")
     return md_path, json_path
 
 def show_report(report: dict[str, Any], md: Path, js: Path) -> None:
@@ -539,24 +548,31 @@ def find_workspace(source: Path) -> Path | None:
     return None
 
 
-def codex_exec_command(codex: str, workspace: Path, prompt: str) -> list[str]:
+def codex_exec_command(codex: str, workspace: Path, prompt: str, sandbox: str = "workspace-write") -> list[str]:
     """Build argv for codex exec; keep the workspace path as one argument."""
-    return [codex, "exec", "--cd", str(workspace), "--sandbox", "workspace-write", prompt]
+    if sandbox not in {"read-only", "workspace-write"}:
+        raise ValueError(f"Sandbox Codex inválido: {sandbox}")
+    return [codex, "exec", "--cd", str(workspace), "--sandbox", sandbox, prompt]
 
 
-def codex_resume_command(codex: str, workspace: Path, session_id: str | None = None) -> list[str]:
+def codex_resume_command(codex: str, workspace: Path, session_id: str | None = None, sandbox: str | None = None) -> list[str]:
     command = [codex, "exec", "resume"]
     if session_id:
         command.append(session_id)
-    return command + ["--cd", str(workspace)]
+    command += ["--cd", str(workspace)]
+    if sandbox:
+        if sandbox not in {"read-only", "workspace-write"}:
+            raise ValueError(f"Sandbox Codex inválido: {sandbox}")
+        command += ["--sandbox", sandbox]
+    return command
 
 
-def run_codex(codex: str, workspace: Path, prompt: str, timeout: int = 1800, resume_id: str | None = None):
+def run_codex(codex: str, workspace: Path, prompt: str, timeout: int = 1800, resume_id: str | None = None, sandbox: str = "workspace-write"):
     """Run Codex with inherited credentials/network environment and split output."""
     workspace = workspace.resolve(strict=True)
     if not workspace.is_dir() or WORKSPACES.resolve() not in workspace.parents:
         raise ValueError(f"Diretório de trabalho inválido ou fora de workspaces/: {workspace}")
-    command = codex_resume_command(codex, workspace, resume_id) if resume_id is not None else codex_exec_command(codex, workspace, prompt)
+    command = codex_resume_command(codex, workspace, resume_id, sandbox) if resume_id is not None else codex_exec_command(codex, workspace, prompt, sandbox)
     return subprocess.run(
         command, cwd=str(workspace), text=True, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, timeout=timeout, check=False,
@@ -598,6 +614,23 @@ def run_build(workspace: Path) -> tuple[int, str, str, Path | None]:
         return 127, "", "Não encontrei gradlew, Gradle ou uma configuração Android CMake compilável.", None
     tools = {name: shutil.which(name) for name in ("java", "gradle", "cmake", "ninja", "aapt", "apksigner")}
     console.print(Panel("\n".join(f"{name}: {path or 'não encontrado'}" for name, path in tools.items()) + f"\nAndroid SDK: {sdk or 'não encontrado'}", title="FERRAMENTAS DE BUILD", border_style="cyan"))
+    # Termux's AAPT2 needs its matching libc++_shared.so. Put that directory
+    # first for this Gradle process only; global LD_LIBRARY_PATH may point at
+    # unrelated bundled tools (for example Node-based CLI packages).
+    termux_prefix = env.get("PREFIX")
+    aapt2 = shutil.which("aapt2")
+    if command and Path(command[0]).name in {"gradle", "gradlew"} and termux_prefix and aapt2:
+        prefix_path = Path(termux_prefix).expanduser().resolve()
+        runtime_lib = prefix_path / "lib"
+        try:
+            local_aapt2 = Path(aapt2).resolve().is_relative_to(prefix_path)
+        except OSError:
+            local_aapt2 = False
+        if local_aapt2 and (runtime_lib / "libc++_shared.so").is_file():
+            inherited = env.get("LD_LIBRARY_PATH", "").split(os.pathsep)
+            env["LD_LIBRARY_PATH"] = os.pathsep.join(
+                [str(runtime_lib), *(part for part in inherited if part and Path(part).resolve() != runtime_lib)]
+            )
     try:
         proc = subprocess.run(command, cwd=workspace, env=env, text=True, capture_output=True, timeout=3600, check=False)
         apk = find_apk(workspace) if proc.returncode == 0 else None
@@ -638,11 +671,11 @@ def show_workspace_progress(workspace: Path, state: dict[str, Any]) -> None:
         console.print(Panel(progress.read_text(encoding="utf-8", errors="replace")[-10000:], title="RELATÓRIO DE PROGRESSO", border_style="cyan"))
 
 
-def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, resume: bool = False) -> None:
+def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, resume: bool = False, sandbox: str = "workspace-write") -> None:
     state["status"] = "reconstruindo" if "Reconstruct" in prompt else "analisando" if "analy" in prompt.lower() else "trabalhando com Codex"
     save_workspace_state(workspace, state)
     try:
-        proc = run_codex(codex, workspace, prompt, resume_id=state.get("session_id") if resume else None)
+        proc = run_codex(codex, workspace, prompt, resume_id=state.get("session_id") if resume else None, sandbox=sandbox)
         # Codex JSONL output may include a thread.started event even if the CLI
         # version does not expose a separate session flag.
         for line in proc.stdout.splitlines():
@@ -694,7 +727,7 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
             console.print("[red]Escolha um projeto fora da pasta do PortAI.[/]"); return
         workspace = find_workspace(source)
         if workspace is None:
-            if not Confirm.ask("Criar uma cópia de trabalho isolada em workspaces/?", default=False):
+            if not ask_confirm("Criar uma cópia de trabalho isolada em workspaces/?", default=False):
                 return
             workspace = make_workspace(source)
             save_workspace_state(workspace, {"source_path": str(source), "workspace": str(workspace), "status": "aguardando análise", "session_id": None, "analysis_done": False, "history": []})
@@ -711,10 +744,9 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
     while True:
         section("RECONSTRUÇÃO ANDROID — SESSÃO PERSISTENTE")
         console.print(f"Projeto: [cyan]{state.get('source_path')}[/]\nEstado: [yellow]{state.get('status')}[/]  •  Sessão: {state.get('session_id') or 'não disponível'}")
-        table = Table(box=box.SIMPLE_HEAVY)
-        for n, label in [("1", "Analisar projeto"), ("2", "Reconstruir para Android"), ("3", "Continuar conversa com Codex"), ("4", "Compilar APK"), ("5", "Verificar dependências e corrigir erros"), ("6", "Mostrar arquivos modificados e progresso"), ("7", "Abrir ou instalar APK"), ("8", "Retomar sessão anterior"), ("9", "Voltar ao menu principal")]: table.add_row(n, label)
-        console.print(table)
-        choice = Prompt.ask("Reconstrução", choices=[str(i) for i in range(1, 10)], default="9")
+        for n, label in [("1", "Analisar projeto"), ("2", "Reconstruir para Android"), ("3", "Continuar conversa com Codex"), ("4", "Compilar APK"), ("5", "Verificar dependências e corrigir erros"), ("6", "Mostrar arquivos modificados e progresso"), ("7", "Abrir ou instalar APK"), ("8", "Retomar sessão anterior"), ("9", "Voltar ao menu principal")]:
+            console.print(f"{n}. {label}")
+        choice = ask_prompt("Reconstrução", choices=[str(i) for i in range(1, 10)], default="9")
         if choice == "9": return
         if choice in {"1", "2", "5", "8"}:
             if not codex:
@@ -756,7 +788,7 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
             if not apk: console.print("[yellow]Nenhum APK não vazio encontrado.[/]"); continue
             console.print(f"APK: {apk} ({apk.stat().st_size} bytes)")
             opener = shutil.which("termux-open") or shutil.which("am")
-            if opener and Confirm.ask("Tentar abrir/instalar este APK?", default=False):
+            if opener and ask_confirm("Tentar abrir/instalar este APK?", default=False):
                 args = [opener, "--view", str(apk)] if Path(opener).name == "termux-open" else [opener, "start", "-a", "android.intent.action.VIEW", "-d", f"file://{apk}", "-t", "application/vnd.android.package-archive"]
                 subprocess.run(args, check=False)
         save_workspace_state(workspace, state)
@@ -775,44 +807,532 @@ def run_analysis() -> None:
     except (OSError, ValueError) as exc:
         console.print(f"[red]Falha na análise: {exc}[/]")
 
+def _review_translation_proposals(result, engine, targets: list[str]) -> bool:
+    from portai_translation import LANGUAGES
+
+    proposals = [(entry, locale) for entry in result.entries for locale in targets if locale in entry.translations]
+    decisions = {}
+    if not proposals:
+        return False
+    console.print(f"[cyan]{len(proposals)} propostas para revisão. Nenhuma será aplicada sem aprovação.[/]")
+    for entry, locale in proposals:
+        console.print(Panel(
+            f"[bold]Idioma:[/] {locale} ({LANGUAGES[locale]['name']})\n"
+            f"[bold]Arquivo/chave:[/] {entry.path} :: {entry.key}\n"
+            f"[bold]Original:[/] {entry.source}\n[bold]Proposta:[/] {entry.translations[locale]}",
+            border_style="cyan" if locale != "ar" else "bright_magenta",
+            title="Revisão de tradução" + (" • RTL" if locale == "ar" else ""),
+        ))
+        decisions[(entry.entry_id, locale)] = ask_confirm("Aprovar esta tradução?", default=False)
+    engine.approve(result, decisions, targets)
+    return True
+
+
+def translation_menu() -> None:
+    from portai_translation import LANGUAGES, TranslationEngine
+    from portai_translation.providers import configured_provider
+
+    chosen = ask_prompt("Pasta do projeto para traduzir")
+    project = Path(chosen).expanduser()
+    if not project.is_dir():
+        console.print("[red]Pasta inválida.[/]")
+        return
+    source_language = ask_prompt("Idioma original", choices=["pt-BR", "en", "es", "ar", "hi"], default="en")
+    raw_targets = ask_prompt("Idiomas de destino separados por vírgula", default="pt-BR,es,ar,hi")
+    targets = list(dict.fromkeys(item.strip() for item in raw_targets.split(",") if item.strip()))
+    invalid = [item for item in targets if item not in LANGUAGES]
+    if not targets or invalid:
+        console.print(f"[red]Seleção de idiomas inválida: {', '.join(invalid) or 'vazia'}[/]")
+        return
+    try:
+        provider = configured_provider()
+        engine = TranslationEngine(provider)
+        result = engine.scan(project, source_language)
+        console.print(f"Arquivos localizáveis: {len(result.discovered_files)} • strings: {len(result.entries)} • provedor: {provider.name}")
+        if result.scan_errors:
+            console.print(f"[yellow]Arquivos com erro de leitura/formato: {len(result.scan_errors)} (listados no relatório)[/]")
+        if not result.entries:
+            console.print("[yellow]Nenhuma string traduzível foi encontrada nos formatos suportados.[/]")
+            return
+        engine.translate(result, targets)
+        if not _review_translation_proposals(result, engine, targets):
+            console.print("[yellow]O provedor não produziu traduções. As strings ficam registradas como não traduzidas; configure um provedor e tente novamente.[/]")
+        output_default = project.parent / f"{project.name}-locales"
+        output_raw = ask_prompt("Pasta de saída (originais permanecem intactos)", default=str(output_default))
+        report = engine.apply(result, project, Path(output_raw), targets)
+        _record_translation_report(report)
+        metadata = {
+            locale: {
+                "direction": LANGUAGES[locale]["direction"],
+                "android_resource_folder": f"values-{LANGUAGES[locale]['android']}" if LANGUAGES[locale]["android"] else "values",
+                "unicode": True,
+                "notes": (["Configurar android:supportsRtl=\"true\" e revisar layouts para RTL."] if locale == "ar" else (["Validar fallback de fontes com glifos Devanagari no dispositivo."] if locale == "hi" else [])),
+            }
+            for locale in targets
+        }
+        metadata_path = Path(output_raw).expanduser().resolve() / "localization-metadata.json"
+        if metadata_path.is_symlink():
+            raise ValueError("O arquivo de metadados de saída não pode ser um link simbólico.")
+        if metadata_path.exists():
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            backup = metadata_path.parent / "backups" / stamp / metadata_path.name
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(metadata_path, backup)
+        metadata_path.write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        missing = sum(1 for entry in result.entries for locale in targets if entry.target_status.get(locale, entry.status) != "approved")
+        console.print(f"[green]Relatório: {report}[/]\nSaída: {output_raw}\nStrings sem aprovação: {missing}")
+    except (OSError, ValueError, RuntimeError, ImportError, TypeError, subprocess.TimeoutExpired) as exc:
+        console.print(f"[red]Falha no Universal Translation Engine: {exc}[/]")
+
+
+def apk_translation_menu() -> None:
+    from getpass import getpass
+    from portai_apk_translator import APK_TARGETS, ApkTranslator
+    from portai_translation import TranslationEngine
+    from portai_translation.providers import configured_provider
+
+    apk = Path(ask_prompt("Caminho do APK original").strip()).expanduser()
+    if not apk.is_file():
+        console.print("[red]Arquivo APK não encontrado.[/]")
+        return
+    target = ask_prompt("Idioma de destino", choices=list(APK_TARGETS), default="es")
+    missing = [name for name in ("apktool", "apksigner", "java") if not shutil.which(name)]
+    if missing:
+        console.print(f"[red]Dependências obrigatórias ausentes: {', '.join(missing)}. Instale-as no Termux e tente novamente.[/]")
+        return
+    keystore = Path(ask_prompt("Caminho da sua keystore de assinatura").strip()).expanduser()
+    if not keystore.is_file():
+        console.print("[red]Keystore não encontrada. O PortAI não extrai nem cria chaves de terceiros.[/]")
+        return
+    alias = ask_prompt("Alias da chave")
+    keystore_password = getpass("Senha da keystore: ")
+    key_password = getpass("Senha da chave: ")
+    source_language = ask_prompt("Idioma original das strings", choices=["en", "es", "ar", "hi"], default="en")
+    try:
+        provider = configured_provider()
+        engine = TranslationEngine(provider)
+        translator = ApkTranslator(engine)
+        report = translator.run(
+            apk=apk,
+            workspace_root=WORKSPACES,
+            targets=[target],
+            reviewer=_review_translation_proposals,
+            keystore=keystore,
+            key_alias=alias,
+            keystore_password=keystore_password,
+            key_password=key_password,
+            source_language=source_language,
+        )
+        console.print(f"Workspace: {report['workspace']}\nPacote: {report.get('package') or 'indisponível'}\n"
+                      f"Versão: {report.get('version_name') or 'indisponível'} ({report.get('version_code') or '?'})\n"
+                      f"Arquiteturas: {', '.join(report.get('architectures', [])) or 'nenhuma detectada'}")
+        for warning in report.get("warnings", []):
+            console.print(f"[yellow]Aviso: {warning}[/]")
+        if report["status"] == "success" and report["validated"]:
+            console.print(f"[green]APK assinado e validado: {report['output_apk']}[/]")
+        else:
+            console.print(f"[red]Processamento não concluído: {'; '.join(report['errors'])}[/]")
+        console.print(f"Relatório: {report['report_path']}")
+    except (OSError, ValueError, RuntimeError, ImportError, TypeError) as exc:
+        console.print(f"[red]Falha ao iniciar o tradutor de APK: {exc}[/]")
+    finally:
+        # Do not retain signing secrets beyond this operation.
+        keystore_password = ""
+        key_password = ""
+
+
+def _game_progress(workspace: Path, state: dict[str, Any], analysis: dict[str, Any], report_paths: tuple[Path, Path]) -> Path:
+    progress = {
+        "project": state.get("source_path"),
+        "workspace": str(workspace),
+        "session_id": state.get("session_id"),
+        "status": state.get("status"),
+        "recent_history": state.get("history", [])[-10:],
+        "last_return_code": state.get("last_return_code"),
+        "last_error": state.get("last_error"),
+        "authorized_files": state.get("authorized_game_files", []),
+        "last_modified_files": state.get("game_last_modified_files", []),
+        "out_of_scope_changes": state.get("game_out_of_scope_changes", []),
+        "backup_manifests": state.get("game_backup_manifests", []),
+        "compatibility_report_markdown": str(report_paths[0]),
+        "compatibility_report_json": str(report_paths[1]),
+        "external_build_host": analysis.get("external_build_host"),
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    path = workspace / "GAME_PORTABILITY_PROGRESS.json"
+    path.write_text(json.dumps(progress, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _latest_game_backup(workspace: Path) -> Path | None:
+    backup_root = WORKSPACES / ".portai-game-backups" / workspace.name
+    if not backup_root.is_dir():
+        return None
+    manifests = sorted(backup_root.glob("*/manifest.json"), reverse=True)
+    return manifests[0] if manifests else None
+
+
+def _is_android_gradle_app(workspace: Path) -> bool:
+    manifests = list(workspace.rglob("AndroidManifest.xml"))
+    gradle_files = [p for p in workspace.rglob("build.gradle*") if p.is_file() and not p.is_symlink()]
+    if not manifests or not gradle_files:
+        return False
+    for path in gradle_files:
+        try:
+            if re.search(r"com\.android\.application|com\.android\.tools\.build:gradle", path.read_text(encoding="utf-8", errors="replace")):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def game_recreation_menu(initial_choice: str | None = None) -> None:
+    from game_portability import (
+        analyze_game_project, backup_authorized_files, restore_authorized_backup,
+        save_game_report, workspace_inventory,
+    )
+
+    selected = Path(ask_prompt("Pasta raiz do projeto de jogo").strip()).expanduser()
+    if not selected.is_dir():
+        console.print("[red]Pasta inválida.[/]")
+        return
+    source = selected.resolve()
+    if source == ROOT or ROOT in source.parents:
+        console.print("[red]Escolha um projeto fora da pasta da PortAI.[/]")
+        return
+    try:
+        analysis = analyze_game_project(source)
+        report_paths = save_game_report(analysis, REPORTS)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]Falha na análise de jogo: {exc}[/]")
+        return
+    console.print(Panel(
+        f"Engine: [cyan]{analysis['engine']}[/]\nArquivos: {analysis['files_found']} • scripts/código: {analysis['source_files']}\n"
+        f"Dependências identificadas: {len(analysis['dependencies'])}\nIncompatibilidades: {len(analysis['incompatibilities'])}\n"
+        f"Build Android já configurado: {'sim, verificar antes de compilar' if analysis['build_ready'] else 'não detectado'}\n"
+        f"Host indicado: {analysis['external_build_host']}",
+        title="ANÁLISE DE PORTABILIDADE DE JOGO", border_style="bright_magenta",
+    ))
+    console.print(f"Relatórios: {report_paths[0]} • {report_paths[1]}")
+
+    workspace = find_workspace(source)
+    if workspace is None:
+        if not ask_confirm("Criar uma cópia isolada em workspaces/ para a sessão Codex?", default=False):
+            return
+        try:
+            workspace = make_workspace(source)
+            save_workspace_state(workspace, {
+                "source_path": str(source), "workspace": str(workspace),
+                "status": "plano de portabilidade criado", "session_id": None,
+                "analysis_done": False, "history": [],
+            })
+        except (OSError, ValueError) as exc:
+            console.print(f"[red]Falha ao criar workspace: {exc}[/]")
+            return
+    state = load_workspace_state(workspace)
+    if not state:
+        console.print("[red]Estado persistente da workspace inválido; nenhuma sessão será iniciada.[/]")
+        return
+    state.setdefault("history", [])
+    (workspace / "PORTAI_GAME_PORTABILITY_PLAN.json").write_text(
+        json.dumps(analysis, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    _game_progress(workspace, state, analysis, report_paths)
+    codex = shutil.which("codex")
+
+    while True:
+        section("AI GAME RECREATION ENGINE — WORKSPACE PERSISTENTE")
+        console.print(f"Projeto original: [cyan]{source}[/]\nWorkspace: [cyan]{workspace}[/]\nSessão Codex: {state.get('session_id') or 'ainda não iniciada'}")
+        for number, label in [
+            ("1", "Atualizar análise e plano"),
+            ("2", "Pedir revisão de plano ao Codex (somente leitura)"),
+            ("3", "Autorizar arquivos e solicitar adaptação ao Codex"),
+            ("4", "Continuar sessão Codex persistente"),
+            ("5", "Mostrar progresso e arquivos alterados"),
+            ("6", "Recuperar backup dos arquivos autorizados"),
+            ("7", "Compilar build Gradle Android real"),
+            ("0", "Voltar ao menu principal"),
+        ]:
+            console.print(f"{number}. {label}")
+        choice = ask_prompt("Game Recreation", choices=["1", "2", "3", "4", "5", "6", "7", "0"], default=initial_choice or "0")
+        initial_choice = None
+        if choice == "0":
+            return
+        if choice == "1":
+            try:
+                analysis = analyze_game_project(source)
+                report_paths = save_game_report(analysis, REPORTS)
+                (workspace / "PORTAI_GAME_PORTABILITY_PLAN.json").write_text(json.dumps(analysis, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                _game_progress(workspace, state, analysis, report_paths)
+                console.print(f"[green]Análise atualizada: {report_paths[0]}[/]")
+            except (OSError, ValueError) as exc:
+                console.print(f"[red]{exc}[/]")
+        elif choice == "2":
+            if not codex:
+                console.print("[red]Codex CLI não encontrado no PATH.[/]")
+                continue
+            prompt = (
+                "Review PORTAI_GAME_PORTABILITY_PLAN.json and provide a concrete, prioritized Android portability plan. "
+                "Do not edit, create, delete, or build any file. Distinguish evidence from assumptions, identify dependencies, "
+                "touch controls, graphics/performance risks, and whether Linux/Windows/macOS external tooling is required. "
+                "Do not claim the game can be converted automatically."
+            )
+            codex_task(codex, workspace, state, prompt, sandbox="read-only")
+            _game_progress(workspace, state, analysis, report_paths)
+        elif choice == "3":
+            if not codex:
+                console.print("[red]Codex CLI não encontrado no PATH.[/]")
+                continue
+            candidates = analysis["candidate_files"]
+            if not candidates:
+                console.print("[yellow]A análise não encontrou arquivos candidatos para autorização.[/]")
+                continue
+            candidates = candidates[:80]
+            for index, item in enumerate(candidates, 1):
+                console.print(f"[bright_magenta]{index}[/] {item['path']} [dim]({', '.join(item['reasons'])})[/]")
+            raw = ask_prompt("Índices exatos autorizados, separados por vírgula (0 cancela)", default="0")
+            try:
+                indices = list(dict.fromkeys(int(part.strip()) for part in raw.split(",") if part.strip()))
+            except ValueError:
+                console.print("[red]Use apenas índices numéricos.[/]")
+                continue
+            if not indices or indices == [0]:
+                continue
+            if any(index < 1 or index > len(candidates) for index in indices):
+                console.print("[red]Um dos índices não corresponde à lista.[/]")
+                continue
+            authorized = [candidates[index - 1]["path"] for index in indices]
+            state["authorized_game_files"] = authorized
+            backup_manifest = backup_authorized_files(workspace, authorized, WORKSPACES / ".portai-game-backups")
+            state.setdefault("game_backup_manifests", []).append(str(backup_manifest))
+            before = workspace_inventory(workspace)
+            plan_context = {
+                "engine": analysis["engine"], "incompatibilities": analysis["incompatibilities"],
+                "plan": analysis["plan"], "external_build_host": analysis["external_build_host"],
+            }
+            prompt = (
+                "Adapt this game project toward Android using only these user-authorized existing files: "
+                + json.dumps(authorized, ensure_ascii=False)
+                + ". Do not edit or create any other path, do not access secrets, and do not modify the original project. "
+                "Keep changes minimal, preserve existing game logic and IDs, adapt input for touch only where these files allow, "
+                "and do not simulate builds. If required changes need other files or a Linux/Windows/macOS host, stop and report them "
+                "without touching those paths. Context: " + json.dumps(plan_context, ensure_ascii=False)
+                + ". Record actual changed files and blockers in your response."
+            )
+            codex_task(codex, workspace, state, prompt, sandbox="workspace-write")
+            after = workspace_inventory(workspace)
+            changed = sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+            state["game_last_modified_files"] = changed
+            state["game_out_of_scope_changes"] = sorted(set(changed) - set(authorized))
+            if state["game_out_of_scope_changes"]:
+                state["status"] = "revisão necessária: Codex alterou paths não autorizados"
+                state["last_error"] = "Alterações fora da lista autorizada: " + ", ".join(state["game_out_of_scope_changes"])
+                console.print(f"[yellow]Foram detectadas alterações fora da lista autorizada: {state['last_error']}[/]")
+            save_workspace_state(workspace, state)
+            _game_progress(workspace, state, analysis, report_paths)
+            console.print(f"Arquivos modificados detectados: {', '.join(changed) or 'nenhum'}")
+        elif choice == "4":
+            if not codex:
+                console.print("[red]Codex CLI não encontrado no PATH.[/]")
+            elif not state.get("session_id"):
+                console.print("[yellow]Nenhum ID de sessão persistente foi salvo ainda.[/]")
+            else:
+                codex_task(codex, workspace, state, "", resume=True, sandbox="workspace-write")
+                _game_progress(workspace, state, analysis, report_paths)
+        elif choice == "5":
+            show_workspace_progress(workspace, state)
+            progress = workspace / "GAME_PORTABILITY_PROGRESS.json"
+            if progress.is_file():
+                console.print(Panel(progress.read_text(encoding="utf-8", errors="replace"), title="PROGRESSO PORTAI", border_style="cyan"))
+        elif choice == "6":
+            manifest = _latest_game_backup(workspace)
+            if manifest is None:
+                console.print("[yellow]Nenhum backup de arquivos autorizados foi encontrado.[/]")
+                continue
+            if ask_confirm(f"Recuperar arquivos conforme {manifest}?", default=False):
+                try:
+                    restored = restore_authorized_backup(workspace, manifest)
+                    state["game_last_modified_files"] = restored
+                    state["game_out_of_scope_changes"] = []
+                    state["status"] = "backup autorizado recuperado"
+                    state["last_error"] = None
+                    save_workspace_state(workspace, state)
+                    _game_progress(workspace, state, analysis, report_paths)
+                    console.print(f"[green]Recuperados: {', '.join(restored)}[/]")
+                except (OSError, ValueError, KeyError) as exc:
+                    console.print(f"[red]Falha ao recuperar backup: {exc}[/]")
+        elif choice == "7":
+            if not _is_android_gradle_app(workspace):
+                console.print(f"[yellow]Build não iniciado: não encontrei configuração de aplicativo Gradle Android. {analysis['external_build_host']}[/]")
+                continue
+            if not ask_confirm("Executar a build Gradle real no workspace?", default=False):
+                continue
+            prior_apks = {path.resolve(): path.stat().st_mtime_ns for path in workspace.rglob("*.apk") if path.is_file()}
+            state["status"] = "compilando projeto Android"
+            save_workspace_state(workspace, state)
+            code, stdout, stderr, apk = run_build(workspace)
+            if apk and prior_apks.get(apk.resolve()) == apk.stat().st_mtime_ns:
+                code, apk = 1, None
+                stderr += "\nO APK localizado já existia antes desta execução; build não considerada como nova saída."
+            build_result = {
+                "return_code": code, "apk": str(apk) if apk else None,
+                "validated": bool(apk and validate_apk(apk)),
+                "stdout_tail": stdout[-6000:], "stderr_tail": stderr[-6000:],
+                "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            }
+            (workspace / "GAME_ANDROID_BUILD_RESULT.json").write_text(json.dumps(build_result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            state["status"] = "APK compilado e validado" if build_result["validated"] else "build Android falhou"
+            state["last_error"] = None if build_result["validated"] else (stderr[-2000:] or "Build sem APK validado.")
+            save_workspace_state(workspace, state)
+            _game_progress(workspace, state, analysis, report_paths)
+            console.print(f"[green]APK real validado: {apk}[/]" if build_result["validated"] else f"[red]Nenhum APK validado (código {code}).[/]")
+
+
+def interface_language_menu() -> None:
+    console.print("\n" + translate_text("Idioma da interface"))
+    for index, locale in enumerate(LOCALES, 1):
+        console.print(f"{index}. {LOCALE_NAMES[locale]} [{locale}]")
+    choice = ask_prompt("Selecione o idioma da interface", choices=[str(i) for i in range(1, len(LOCALES) + 1)], default=str(LOCALES.index(get_locale()) + 1))
+    try:
+        locale = LOCALES[int(choice) - 1]
+        save_locale(locale)
+        console.print(f"{translate_text('Idioma salvo')}: {LOCALE_NAMES[locale]}")
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]{translate_text('Opção inválida.')}: {exc}[/]")
+
+
+def _show_project_reports() -> None:
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    if WORKSPACES.is_dir():
+        workspaces = sorted(WORKSPACES.iterdir(), key=lambda path: path.stat().st_mtime, reverse=True)
+        for workspace in workspaces[:30]:
+            state = load_workspace_state(workspace)
+            if state:
+                history = state.get("history", [])
+                latest = history[-1].get("prompt", "") if history else "sem atividade registrada"
+                console.print(
+                    f"Projeto: {state.get('source_path', workspace.name)}\n"
+                    f"Estado: {state.get('status', 'indisponível')} • Sessão Codex: {state.get('session_id') or 'não iniciada'}\n"
+                    f"Última atividade: {latest[:160]}"
+                )
+    reports = sorted(REPORTS.iterdir(), key=lambda path: path.stat().st_mtime, reverse=True)
+    console.print("\nRelatórios recentes:")
+    if not reports:
+        console.print("Nenhum relatório disponível.")
+    for path in reports[:30]:
+        console.print(f"{path.name} — {path}")
+
+
+def _show_translation_quality() -> None:
+    history_path = REPORTS / "translation-history.json"
+    reports = []
+    try:
+        records = json.loads(history_path.read_text(encoding="utf-8"))
+        reports = [Path(item["report"]) for item in reversed(records) if item.get("report") and Path(item["report"]).is_file()]
+    except (OSError, ValueError, TypeError, KeyError):
+        pass
+    if not reports:
+        reports = sorted(REPORTS.rglob("translation-report-*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not reports:
+        console.print("Nenhum relatório de tradução encontrado. Traduza um projeto para gerar a análise de qualidade.")
+        return
+    report = json.loads(reports[0].read_text(encoding="utf-8"))
+    entries = report.get("entries", [])
+    approved = sum(1 for entry in entries if entry.get("status") == "approved")
+    console.print(f"Relatório mais recente: {reports[0]}\nStrings: {len(entries)}\nAprovadas: {approved}\nErros de leitura: {len(report.get('scan_errors', []))}")
+
+
+def _record_translation_report(report: Path) -> None:
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    path = REPORTS / "translation-history.json"
+    if path.is_symlink():
+        raise OSError("O histórico de tradução não pode ser um link simbólico.")
+    records = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    records.append({"created_at": datetime.now().astimezone().isoformat(timespec="seconds"), "report": str(report.resolve())})
+    if path.exists():
+        backup = REPORTS / "backups" / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / path.name
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, backup)
+    temp = path.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp.replace(path)
+
+
+def _show_help() -> None:
+    console.print(f"OffTec PortAI {VERSION}\nFerramenta local para análise e adaptação de projetos Android.\nRelatórios: {REPORTS}\nWorkspaces persistentes: {WORKSPACES}")
+
+
+def _category_menu(title: str, actions: tuple[tuple[str, str, Any], ...]) -> None:
+    while True:
+        console.print(f"\n[bold bright_magenta]{translate_text(title)}[/]")
+        for number, label, _action in actions:
+            console.print(f"{number}. {translate_text(label)}")
+        console.print(f"0. {translate_text('Voltar')}")
+        choices = [number for number, _label, _action in actions] + ["0"]
+        choice = ask_prompt(title, choices=choices, default="0")
+        if choice == "0":
+            return
+        next(action for number, _label, action in actions if number == choice)()
+
+
+def projects_menu() -> None:
+    _category_menu("01 — PROJETOS", (
+        ("1", "Encontrar e analisar projetos", run_analysis),
+        ("2", "Portar com Codex", codex_port_assist),
+        ("3", "Histórico e relatórios", _show_project_reports),
+    ))
+
+
+def apk_build_center_menu() -> None:
+    from apk_build_center import ApkBuildCenter
+    ApkBuildCenter(ROOT, WORKSPACES, REPORTS, run_build, validate_apk, ask_prompt, ask_confirm, console).menu()
+
+
+def translation_category_menu() -> None:
+    _category_menu("03 — TRADUÇÃO", (
+        ("1", "Traduzir projeto", translation_menu),
+        ("2", "Traduzir APK Android", apk_translation_menu),
+        ("3", "Verificar qualidade das traduções", _show_translation_quality),
+    ))
+
+
+def game_portability_menu() -> None:
+    _category_menu("04 — GAME PORTABILITY", (
+        ("1", "Analisar jogos", lambda: game_recreation_menu("1")),
+        ("2", "Planejar adaptação", lambda: game_recreation_menu("2")),
+        ("3", "Reconstruir com Codex", lambda: game_recreation_menu("3")),
+    ))
+
+
+def settings_menu() -> None:
+    _category_menu("05 — CONFIGURAÇÕES", (
+        ("1", "Idioma da interface", interface_language_menu),
+        ("2", "Diagnóstico", check_environment),
+        ("3", "Verificar dependências", check_environment),
+        ("4", "Ajuda e informações", _show_help),
+    ))
+
+
 def menu() -> None:
     while True:
         banner()
-        table = Table(box=box.ROUNDED, show_header=False, border_style="magenta", padding=(0, 1))
-        table.add_column("Opção", style="bold bright_magenta", width=8)
-        table.add_column("Ferramenta", style="white")
-        table.add_column("Descrição", style="dim")
-        table.add_row(" [1] ", "Encontrar e analisar projetos", "Listar projetos detectados e escolher pelo número")
-        table.add_row(" [2] ", "Portar com Codex", "Abrir o ambiente persistente de reconstrução Android")
-        table.add_row(" [3] ", "Diagnóstico", "Verificar Python, Codex, Git e SDK Android")
-        table.add_row(" [4] ", "Abrir pasta de relatórios", str(REPORTS))
-        table.add_row(" [5] ", "Reconstrução Android com Codex", "Ambiente persistente para análise, adaptação e APK")
-        table.add_row(" [0] ", "Sair", "Encerrar com segurança")
-        console.print(table)
-        choice = Prompt.ask("PortAI", choices=["1", "2", "3", "4", "5", "0"], default="1")
+        categories = (
+            ("1", "01 — PROJETOS", projects_menu),
+            ("2", "02 — APK BUILD CENTER", apk_build_center_menu),
+            ("3", "03 — TRADUÇÃO", translation_category_menu),
+            ("4", "04 — GAME PORTABILITY", game_portability_menu),
+            ("5", "05 — CONFIGURAÇÕES", settings_menu),
+        )
+        for number, name, _action in categories:
+            console.print(f"[bold bright_magenta]{translate_text(name)}[/]")
+        console.print("0. Sair")
+        choice = ask_prompt("PortAI", choices=[number for number, _name, _action in categories] + ["0"], default="1")
         if choice == "0":
             console.print(Panel("[bold bright_magenta]OffTec PortAI encerrado. Até a próxima![/]", border_style="magenta"))
             break
-        if choice == "1":
-            run_analysis()
-        elif choice == "2":
-            codex_port_assist()
-        elif choice == "3":
-            check_environment()
-        elif choice == "4":
-            REPORTS.mkdir(parents=True, exist_ok=True)
-            console.print(f"Pasta: {REPORTS}")
-            try:
-                files = sorted(REPORTS.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
-                for p in files[:30]:
-                    console.print(f" • {p.name}")
-                if not files:
-                    console.print("[dim]Nenhum relatório ainda.[/]")
-            except OSError as exc:
-                console.print(f"[red]{exc}[/]")
-        elif choice == "5":
-            reconstruction_menu()
-        Prompt.ask("\nPressione Enter para voltar ao menu", default="")
+        next(action for number, _name, action in categories if number == choice)()
 
 def main() -> None:
     try:

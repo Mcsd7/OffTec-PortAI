@@ -1,9 +1,32 @@
-OffTec PortAI 0.2.1 — testes executados no ambiente de empacotamento
+OffTec PortAI 0.3.0 — testes executados no ambiente Termux
 
-Comando: python -m py_compile portai.py
+Comando: python -m py_compile portai.py portai_apk_translator.py portai_translation/*.py tests/*.py
 Resultado: OK
 
-Comando: python -m unittest discover -s tests -v
-Resultado: 3 testes passaram.
+Comando: python -m unittest discover -s tests -p 'test_apk_translator.py' -v
+Resultado: 5 testes passaram; pipeline testado com Apktool e apksigner simulados, incluindo falha de verificação de assinatura.
 
-Observação: o teste automatizado não substitui a validação no Termux do usuário, nem garante que todo projeto Windows seja portável para Android.
+Comando: python -m unittest discover -s tests -v
+Resultado anterior: 30 testes passaram, incluindo os 24 testes anteriores à implementação do APK Translator.
+
+Implementação AI Game Recreation Engine:
+Comando: python -m py_compile portai.py game_portability.py tests/test_game_portability.py tests/test_portai.py
+Resultado: OK
+
+Comando: python -m unittest discover -s tests -p 'test_game_portability.py' -v
+Resultado: 5 testes passaram.
+
+Comando: python -m unittest discover -s tests -v
+Resultado: 37 testes passaram; os 30 testes previamente aprovados continuam passando e foram adicionados 7 testes.
+
+Observação: os testes APK usam executáveis simulados e não substituem teste com APK real, Apktool/apksigner instalados, instalação no dispositivo, revisão das traduções nem validação visual de RTL e fontes. Os testes de portabilidade usam projetos temporários sintéticos; nenhuma build de jogo real foi executada.
+
+Implementação de localização da interface:
+Comando: python -m py_compile portai.py portai_i18n.py game_portability.py portai_apk_translator.py portai_translation/*.py tests/*.py
+Resultado: OK
+
+Comando: python -m unittest discover -s tests -p 'test_i18n.py' -v
+Resultado: 6 testes passaram para os cinco idiomas, persistência, Unicode/RTL best-effort, Rich e relatórios.
+
+Comando: python -m unittest discover -s tests -v
+Resultado: 43 testes passaram; os 37 testes anteriores continuam passando.
