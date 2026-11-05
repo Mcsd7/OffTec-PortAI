@@ -308,6 +308,12 @@ class ApkBuildCenter:
             self.console.print(f"{item['created_at']} — {item['operation']} — {item['result']}\n  Projeto: {item.get('project')}\n  APK: {item.get('apk_path')}")
 
     def menu(self) -> None:
+        from rich import box
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+        from portai_i18n import translate_text
+
         actions = {
             "1": ("Compilar projeto Android", self.compile_project),
             "2": ("Reconstruir APK com Apktool", self.rebuild_apk),
@@ -316,11 +322,33 @@ class ApkBuildCenter:
             "5": ("Alinhar APK com zipalign", self.align_apk),
             "6": ("Histórico de builds", self.show_history),
         }
+        descriptions = {
+            "Compilar projeto Android": "Localize projetos Gradle e execute o build configurado.",
+            "Reconstruir APK com Apktool": "Decodifique e reconstrua um APK em workspace isolado.",
+            "Assinar APK com sua keystore": "Assine o pacote usando uma chave que você controla.",
+            "Verificar integridade e assinatura": "Inspecione estrutura ZIP e assinatura do APK.",
+            "Alinhar APK com zipalign": "Aplique alinhamento e valide o pacote resultante.",
+            "Histórico de builds": "Revise operações e resultados registrados anteriormente.",
+        }
         while True:
-            self.console.print("\n[bold bright_magenta]APK BUILD CENTER[/]")
+            self.console.print("\n[bold bright_red]APK BUILD CENTER[/]")
+            columns = 2 if self.console.width >= 78 else 1
+            grid = Table.grid(expand=True, padding=(0, 1))
+            for _ in range(columns):
+                grid.add_column(ratio=1, min_width=28)
+            cards = []
             for number, (label, _) in actions.items():
-                self.console.print(f"{number}. {label}")
-            self.console.print("0. Voltar")
+                content = Text()
+                content.append(f"{number}  ", style="bold bright_red")
+                content.append(translate_text(label), style="bold white")
+                content.append("\n")
+                content.append(translate_text(descriptions[label]), style="dim")
+                cards.append(Panel(content, border_style="bright_red", box=box.ROUNDED, padding=(0, 1)))
+            for index in range(0, len(cards), columns):
+                row = cards[index:index + columns]
+                grid.add_row(*(row + [""] * (columns - len(row))))
+            self.console.print(grid)
+            self.console.print("[bold bright_red]0.[/] Voltar")
             choice = self.ask_prompt("APK Build Center", choices=[*actions, "0"], default="0")
             if choice == "0":
                 return

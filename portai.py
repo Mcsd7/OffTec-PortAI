@@ -98,21 +98,23 @@ PATTERNS = {
 }
 
 def banner() -> None:
-    logo = Text()
-    logo.append("OFF", style="bold bright_magenta")
-    logo.append("TEC", style="bold magenta")
-    logo.append("  PORT", style="bold white")
-    logo.append("AI", style="bold bright_magenta")
-    subtitle = Text("WINDOWS → ANDROID  •  CODE INTELLIGENCE  •  TERMUX EDITION", style="bright_white")
-    content = Align.center(Text.assemble(logo, "\n", subtitle))
-    console.print()
-    console.print(Panel(content, border_style="bright_magenta", box=box.DOUBLE, padding=(1, 2)))
-    console.print(Align.center(Text(translate_text("Análise estática • cópias isoladas • integração com Codex CLI"), style="dim")))
-    console.print()
+    brand = Text.assemble(
+        ("OFFTEC", "bold white"),
+        (" / ", "dim"),
+        ("PORTAI", "bold bright_red"),
+    )
+    brand.append(f"   v{VERSION}", style="dim")
+    detail = Text(translate_text("GAME PORTABILITY  •  ANDROID TOOLING  •  TERMUX"), style="dim")
+    console.print(Panel(
+        Align.left(Text.assemble(brand, "\n", detail)),
+        border_style="bright_red",
+        box=box.ROUNDED,
+        padding=(0, 2),
+    ))
 
 def section(title: str) -> None:
     console.print()
-    console.print(Text(translate_text(title), style="bold bright_magenta"))
+    console.print(Text(translate_text(title), style="bold bright_red"))
 
 def yesno(value: bool) -> str:
     return "[bright_green]OK[/]" if value else "[yellow]NÃO ENCONTRADO[/]"
@@ -130,7 +132,7 @@ def check_environment() -> None:
         ("SDK em ~/android-sdk", "presente" if (Path.home() / "android-sdk").is_dir() else "não encontrado"),
     ]
     for a, b in rows:
-        console.print(f"[white]{a}:[/] [bright_cyan]{b}[/]")
+        console.print(f"[white]{a}:[/] [bright_red]{b}[/]")
     codex = shutil.which("codex")
     if codex:
         try:
@@ -314,11 +316,11 @@ def select_project() -> Path | None:
             ask_prompt("Pressione Enter para voltar ao menu", default="")
             return None
     else:
-        table = Table(box=box.ROUNDED, border_style="bright_magenta", header_style="bold bright_magenta")
-        table.add_column("Nº", justify="right", style="bright_magenta")
+        table = Table(box=box.ROUNDED, border_style="bright_red", header_style="bold bright_red")
+        table.add_column("Nº", justify="right", style="bright_red")
         table.add_column("Projeto", style="white")
         table.add_column("Caminho completo", style="dim")
-        table.add_column("Plataforma", style="bright_cyan")
+        table.add_column("Plataforma", style="bright_red")
         table.add_column("Tipo", style="white")
         table.add_column("Tecnologia", style="white")
         table.add_column("Evidência", style="green")
@@ -344,7 +346,7 @@ def select_project() -> Path | None:
         console.print("[dim]Um .EXE sozinho não vira APK: normalmente precisamos do código-fonte e das dependências.[/]")
     console.print("[dim]Opções numeradas correspondem às linhas da lista.[/]")
     options = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-    options.add_column("Opção", style="bright_magenta", justify="right")
+    options.add_column("Opção", style="bright_red", justify="right")
     options.add_column("Projeto", style="white")
     for i, item in enumerate(projects, 1):
         path = Path(item["path"])
@@ -379,7 +381,7 @@ def select_project() -> Path | None:
 
 def select_project_from_items(projects: list[dict[str, Any]]) -> Path | None:
     """Mostra lista resultante da busca manual e devolve a escolha correspondente."""
-    table = Table(box=box.ROUNDED, header_style="bold bright_magenta")
+    table = Table(box=box.ROUNDED, header_style="bold bright_red")
     table.add_column("Nº", justify="right")
     table.add_column("Raiz identificada")
     table.add_column("Plataforma")
@@ -481,12 +483,12 @@ def save_report(report: dict[str, Any]) -> tuple[Path, Path]:
 def show_report(report: dict[str, Any], md: Path, js: Path) -> None:
     console.print(Panel(
         f"[bold white]{report['verdict']}[/]\n\n"
-        f"[bright_cyan]Arquivos:[/] {report['files_found']}  "
-        f"[bright_cyan]Textos lidos:[/] {report['text_files_read']}  "
-        f"[bright_cyan]Indicadores Windows:[/] {len(report['windows_indicators'])}",
-        title="RESULTADO DA ANÁLISE", border_style="bright_magenta", box=box.ROUNDED
+        f"[bright_red]Arquivos:[/] {report['files_found']}  "
+        f"[bright_red]Textos lidos:[/] {report['text_files_read']}  "
+        f"[bright_red]Indicadores Windows:[/] {len(report['windows_indicators'])}",
+        title="RESULTADO DA ANÁLISE", border_style="bright_red", box=box.ROUNDED
     ))
-    table = Table(title="Linguagens e arquivos", box=box.SIMPLE, header_style="bold bright_magenta")
+    table = Table(title="Linguagens e arquivos", box=box.SIMPLE, header_style="bold bright_red")
     table.add_column("Linguagem")
     table.add_column("Quantidade", justify="right")
     for lang, count in report["languages"].items():
@@ -494,7 +496,7 @@ def show_report(report: dict[str, Any], md: Path, js: Path) -> None:
     console.print(table)
     if report["windows_indicators"]:
         t = Table(title="Possíveis obstáculos à portabilidade", box=box.SIMPLE)
-        t.add_column("Indicador", style="bright_magenta")
+        t.add_column("Indicador", style="bright_red")
         t.add_column("Arquivos")
         for label, paths in report["windows_indicators"].items():
             t.add_row(label, ", ".join(paths[:5]))
@@ -615,7 +617,7 @@ def run_build(workspace: Path) -> tuple[int, str, str, Path | None]:
     else:
         return 127, "", "Não encontrei gradlew, Gradle ou uma configuração Android CMake compilável.", None
     tools = {name: shutil.which(name) for name in ("java", "gradle", "cmake", "ninja", "aapt", "apksigner")}
-    console.print(Panel("\n".join(f"{name}: {path or 'não encontrado'}" for name, path in tools.items()) + f"\nAndroid SDK: {sdk or 'não encontrado'}", title="FERRAMENTAS DE BUILD", border_style="cyan"))
+    console.print(Panel("\n".join(f"{name}: {path or 'não encontrado'}" for name, path in tools.items()) + f"\nAndroid SDK: {sdk or 'não encontrado'}", title="FERRAMENTAS DE BUILD", border_style="red"))
     # Termux's AAPT2 needs its matching libc++_shared.so. Put that directory
     # first for this Gradle process only; global LD_LIBRARY_PATH may point at
     # unrelated bundled tools (for example Node-based CLI packages).
@@ -665,12 +667,12 @@ def validate_apk(apk: Path) -> bool:
 
 def show_workspace_progress(workspace: Path, state: dict[str, Any]) -> None:
     changed = subprocess.run(["git", "status", "--short"], cwd=workspace, capture_output=True, text=True) if shutil.which("git") else None
-    console.print(Panel(f"Estado: {state.get('status', 'aguardando instruções')}\nOrigem: {state.get('source_path', '?')}\nWorkspace: {workspace}\nSessão Codex: {state.get('session_id') or 'indisponível'}\nÚltimo erro: {state.get('last_error') or 'nenhum'}", title="PROGRESSO", border_style="bright_magenta"))
+    console.print(Panel(f"Estado: {state.get('status', 'aguardando instruções')}\nOrigem: {state.get('source_path', '?')}\nWorkspace: {workspace}\nSessão Codex: {state.get('session_id') or 'indisponível'}\nÚltimo erro: {state.get('last_error') or 'nenhum'}", title="PROGRESSO", border_style="bright_red"))
     if changed:
-        console.print(Panel(changed.stdout.strip() or "Git não disponível nesta cópia.", title="ARQUIVOS MODIFICADOS", border_style="cyan"))
+        console.print(Panel(changed.stdout.strip() or "Git não disponível nesta cópia.", title="ARQUIVOS MODIFICADOS", border_style="red"))
     progress = workspace / "ANDROID_PORT_PROGRESS.md"
     if progress.is_file():
-        console.print(Panel(progress.read_text(encoding="utf-8", errors="replace")[-10000:], title="RELATÓRIO DE PROGRESSO", border_style="cyan"))
+        console.print(Panel(progress.read_text(encoding="utf-8", errors="replace")[-10000:], title="RELATÓRIO DE PROGRESSO", border_style="red"))
 
 
 def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, resume: bool = False, sandbox: str = "workspace-write") -> None:
@@ -693,7 +695,7 @@ def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, 
                     state["session_id"] = str(thread)
         if prompt:
             state["history"].append({"at": datetime.now().isoformat(timespec="seconds"), "prompt": prompt[:600], "return_code": proc.returncode})
-        console.print(Panel(proc.stdout[-16000:] or "(sem stdout)", title="SAÍDA DO CODEX", border_style="bright_magenta"))
+        console.print(Panel(proc.stdout[-16000:] or "(sem stdout)", title="SAÍDA DO CODEX", border_style="bright_red"))
         if proc.stderr:
             console.print(Panel(proc.stderr[-8000:], title="ERROS/AVISOS DO CODEX", border_style="yellow"))
         state["last_return_code"] = proc.returncode
@@ -738,14 +740,14 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
         console.print("[red]Estado da workspace não encontrado; não será associada automaticamente a outro projeto.[/]"); return
     state.setdefault("history", [])
     if codex and not state.get("analysis_done"):
-        console.print(f"[cyan]Analisando a cópia existente: {workspace}[/]")
+        console.print(f"[red]Analisando a cópia existente: {workspace}[/]")
         codex_task(codex, workspace, state, "Analyze this project for Android portability. Inspect architecture, UI, dependencies, build configuration and platform blockers. Reuse original logic where practical. Write PORTABILITY_REPORT.md with evidence, feasible Android strategy, required adaptations, available tools, risks and concrete next steps. Do not modify outside this workspace.")
         state["analysis_done"] = state.get("last_return_code") == 0
         state["status"] = "aguardando instruções" if state["analysis_done"] else state.get("status", "erro")
         save_workspace_state(workspace, state)
     while True:
         section("RECONSTRUÇÃO ANDROID — SESSÃO PERSISTENTE")
-        console.print(f"Projeto: [cyan]{state.get('source_path')}[/]\nEstado: [yellow]{state.get('status')}[/]  •  Sessão: {state.get('session_id') or 'não disponível'}")
+        console.print(f"Projeto: [red]{state.get('source_path')}[/]\nEstado: [yellow]{state.get('status')}[/]  •  Sessão: {state.get('session_id') or 'não disponível'}")
         for n, label in [("1", "Analisar projeto"), ("2", "Reconstruir para Android"), ("3", "Continuar conversa com Codex"), ("4", "Compilar APK"), ("5", "Verificar dependências e corrigir erros"), ("6", "Mostrar arquivos modificados e progresso"), ("7", "Abrir ou instalar APK"), ("8", "Retomar sessão anterior"), ("9", "Voltar ao menu principal")]:
             console.print(f"{n}. {label}")
         choice = ask_prompt("Reconstrução", choices=[str(i) for i in range(1, 10)], default="9")
@@ -764,7 +766,7 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
                 codex_task(codex, workspace, state, "", resume=True)
         elif choice == "3":
             if not codex: console.print("[red]Codex CLI não está no PATH.[/]"); continue
-            console.print("[cyan]Iniciando Codex interativo no workspace; saia do Codex para retornar aqui.[/]")
+            console.print("[red]Iniciando Codex interativo no workspace; saia do Codex para retornar aqui.[/]")
             state["status"] = "conversa interativa"; save_workspace_state(workspace, state)
             try:
                 interactive = subprocess.run([codex, "--cd", str(workspace)], cwd=workspace, check=False)
@@ -778,7 +780,7 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
         elif choice == "4":
             state["status"] = "compilando"; save_workspace_state(workspace, state)
             code, out, err, apk = run_build(workspace)
-            if out: console.print(Panel(out[-12000:], title="BUILD STDOUT", border_style="cyan"))
+            if out: console.print(Panel(out[-12000:], title="BUILD STDOUT", border_style="red"))
             if err: console.print(Panel(err[-12000:], title="BUILD STDERR", border_style="yellow"))
             state["status"] = "APK gerado" if code == 0 and apk else "erro"
             state["last_error"] = None if apk else (err[-2000:] or "Build falhou ou nenhum APK verificável foi encontrado.")
@@ -816,13 +818,13 @@ def _review_translation_proposals(result, engine, targets: list[str]) -> bool:
     decisions = {}
     if not proposals:
         return False
-    console.print(f"[cyan]{len(proposals)} propostas para revisão. Nenhuma será aplicada sem aprovação.[/]")
+    console.print(f"[red]{len(proposals)} propostas para revisão. Nenhuma será aplicada sem aprovação.[/]")
     for entry, locale in proposals:
         console.print(Panel(
             f"[bold]Idioma:[/] {locale} ({LANGUAGES[locale]['name']})\n"
             f"[bold]Arquivo/chave:[/] {entry.path} :: {entry.key}\n"
             f"[bold]Original:[/] {entry.source}\n[bold]Proposta:[/] {entry.translations[locale]}",
-            border_style="cyan" if locale != "ar" else "bright_magenta",
+            border_style="red" if locale != "ar" else "bright_red",
             title="Revisão de tradução" + (" • RTL" if locale == "ar" else ""),
         ))
         decisions[(entry.entry_id, locale)] = ask_confirm("Aprovar esta tradução?", default=False)
@@ -1133,12 +1135,12 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
         console.print(f"[red]Falha na análise de jogo: {exc}[/]")
         return
     console.print(Panel(
-        f"Engine: [cyan]{analysis['engine']}[/] • versão: [cyan]{analysis.get('engine_version', 'não detectada')}[/]\nArquivos: {analysis['files_found']} • scripts/código: {analysis['source_files']}\n"
+        f"Engine: [red]{analysis['engine']}[/] • versão: [red]{analysis.get('engine_version', 'não detectada')}[/]\nArquivos: {analysis['files_found']} • scripts/código: {analysis['source_files']}\n"
         f"Dependências identificadas: {len(analysis['dependencies'])}\nIncompatibilidades: {len(analysis['incompatibilities'])}\n"
         f"Build Android já configurado: {'sim, verificar antes de compilar' if analysis['build_ready'] else 'não detectado'}\n"
         f"Host indicado: {analysis['external_build_host']}\n"
         f"Marcador de configuração Android: {'detectado' if analysis['android_config_detected'] else 'não detectado'}",
-        title="ANÁLISE DE PORTABILIDADE DE JOGO", border_style="bright_magenta",
+        title="ANÁLISE DE PORTABILIDADE DE JOGO", border_style="bright_red",
     ))
     for item in analysis.get("portability_checks", []):
         evidence = ", ".join(item.get("evidence", [])) or "nenhum arquivo correspondente"
@@ -1177,8 +1179,15 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
 
     while True:
         section("AI GAME RECREATION ENGINE — WORKSPACE PERSISTENTE")
-        console.print(f"Projeto original: [cyan]{source}[/]\nWorkspace: [cyan]{workspace}[/]\nSessão Codex: {state.get('session_id') or 'ainda não iniciada'}")
-        for number, label in [
+        console.print(Panel(
+            f"[bold white]{source.name}[/]\n[dim]Projeto[/]  {source}\n"
+            f"[dim]Workspace[/]  {workspace}\n"
+            f"[dim]Sessão Codex[/]  {state.get('session_id') or 'ainda não iniciada'}",
+            title="WORKSPACE DE PORTABILIDADE",
+            border_style="bright_red",
+            box=box.ROUNDED,
+        ))
+        game_actions = tuple((number, label, None) for number, label in [
             ("1", "Atualizar análise e plano"),
             ("2", "Pedir revisão de plano ao Codex (somente leitura)"),
             ("3", "Autorizar arquivos e solicitar adaptação ao Codex"),
@@ -1186,9 +1195,17 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
             ("5", "Mostrar progresso e arquivos alterados"),
             ("6", "Recuperar backup dos arquivos autorizados"),
             ("7", "Exportar/compilar e validar APK Android"),
-            ("0", "Voltar ao menu principal"),
-        ]:
-            console.print(f"{number}. {label}")
+        ])
+        _render_menu_cards(game_actions, {
+            "Atualizar análise e plano": "Atualize engines, dependências, riscos e relatórios.",
+            "Pedir revisão de plano ao Codex (somente leitura)": "Obtenha um plano priorizado sem alterar arquivos.",
+            "Autorizar arquivos e solicitar adaptação ao Codex": "Escolha os arquivos exatos antes de solicitar mudanças.",
+            "Continuar sessão Codex persistente": "Retome o trabalho salvo neste workspace isolado.",
+            "Mostrar progresso e arquivos alterados": "Revise o estado atual e o diff do projeto.",
+            "Recuperar backup dos arquivos autorizados": "Restaure os arquivos cobertos pelo backup de segurança.",
+            "Exportar/compilar e validar APK Android": "Use a toolchain disponível e valide o APK gerado.",
+        })
+        console.print("[bold bright_red]0.[/] Voltar ao menu principal")
         choice = ask_prompt("Game Recreation", choices=["1", "2", "3", "4", "5", "6", "7", "0"], default=initial_choice or "0")
         initial_choice = None
         if choice == "0":
@@ -1226,7 +1243,7 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
                 continue
             candidates = candidates[:80]
             for index, item in enumerate(candidates, 1):
-                console.print(f"[bright_magenta]{index}[/] {item['path']} [dim]({', '.join(item['reasons'])})[/]")
+                console.print(f"[bright_red]{index}[/] {item['path']} [dim]({', '.join(item['reasons'])})[/]")
             raw = ask_prompt("Índices exatos autorizados, separados por vírgula (0 cancela)", default="0")
             try:
                 indices = list(dict.fromkeys(int(part.strip()) for part in raw.split(",") if part.strip()))
@@ -1276,7 +1293,7 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
             console.print(f"Arquivos modificados detectados: {', '.join(changed) or 'nenhum'}")
             console.print(f"Diff revisável: {diff_path} • arquivos autorizados alterados: {', '.join(diff_changed) or 'nenhum'}")
             if diff_text:
-                console.print(Panel(diff_text[:12000], title="DIFF DAS ALTERAÇÕES AUTORIZADAS", border_style="cyan"))
+                console.print(Panel(diff_text[:12000], title="DIFF DAS ALTERAÇÕES AUTORIZADAS", border_style="red"))
         elif choice == "4":
             if not codex:
                 console.print("[red]Codex CLI não encontrado no PATH.[/]")
@@ -1289,7 +1306,7 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
             show_workspace_progress(workspace, state)
             progress = workspace / "GAME_PORTABILITY_PROGRESS.json"
             if progress.is_file():
-                console.print(Panel(progress.read_text(encoding="utf-8", errors="replace"), title="PROGRESSO PORTAI", border_style="cyan"))
+                console.print(Panel(progress.read_text(encoding="utf-8", errors="replace"), title="PROGRESSO PORTAI", border_style="red"))
         elif choice == "6":
             manifest = _latest_game_backup(workspace)
             if manifest is None:
@@ -1434,12 +1451,55 @@ def _show_help() -> None:
     console.print(f"OffTec PortAI {VERSION}\nFerramenta local para análise e adaptação de projetos Android.\nRelatórios: {REPORTS}\nWorkspaces persistentes: {WORKSPACES}")
 
 
+def _render_menu_cards(
+    actions: tuple[tuple[str, str, Any], ...],
+    descriptions: dict[str, str],
+    *,
+    accent: str = "bright_red",
+) -> None:
+    """Renderiza opções como cartões e adapta as colunas à largura do terminal."""
+    columns = 2 if console.width >= 78 else 1
+    grid = Table.grid(expand=True, padding=(0, 1))
+    for _ in range(columns):
+        grid.add_column(ratio=1, min_width=28)
+
+    cards = []
+    for number, label, _action in actions:
+        content = Text()
+        content.append(f"{number}  ", style=f"bold {accent}")
+        content.append(translate_text(label), style="bold white")
+        content.append("\n")
+        content.append(translate_text(descriptions.get(label, "Abrir esta área da PortAI.")), style="dim")
+        cards.append(Panel(content, border_style=accent, box=box.ROUNDED, padding=(0, 1)))
+
+    for index in range(0, len(cards), columns):
+        row = cards[index:index + columns]
+        if columns == 1:
+            grid.add_row(row[0])
+        else:
+            grid.add_row(*(row + [""] * (columns - len(row))))
+    console.print(grid)
+
+
 def _category_menu(title: str, actions: tuple[tuple[str, str, Any], ...]) -> None:
     while True:
-        console.print(f"\n[bold bright_magenta]{translate_text(title)}[/]")
-        for number, label, _action in actions:
-            console.print(f"{number}. {translate_text(label)}")
-        console.print(f"0. {translate_text('Voltar')}")
+        console.print(f"\n[bold bright_red]{translate_text(title)}[/]")
+        _render_menu_cards(actions, {
+            "Encontrar e analisar projetos": "Localize projetos e gere uma análise técnica.",
+            "Portar com Codex": "Trabalhe em uma cópia isolada com assistência do Codex CLI.",
+            "Histórico e relatórios": "Consulte workspaces e relatórios recentes.",
+            "Traduzir projeto": "Revise propostas de localização antes de aplicá-las.",
+            "Traduzir APK Android": "Localize recursos e gere um APK assinado com sua keystore.",
+            "Verificar qualidade das traduções": "Consulte aprovações e alertas do relatório mais recente.",
+            "Analisar jogos": "Detecte engine, dependências e obstáculos para Android.",
+            "Planejar adaptação": "Gere um plano de portabilidade baseado nas evidências do projeto.",
+            "Reconstruir com Codex": "Continue em workspace isolado com revisão e recuperação.",
+            "Idioma da interface": "Escolha o idioma dos menus e mensagens.",
+            "Diagnóstico": "Confira Python, Codex, Git e SDK Android disponíveis.",
+            "Verificar dependências": "Veja quais ferramentas estão instaladas no ambiente.",
+            "Ajuda e informações": "Consulte versão, relatórios e diretórios de trabalho.",
+        })
+        console.print(f"[bold bright_red]0.[/] {translate_text('Voltar')}")
         choices = [number for number, _label, _action in actions] + ["0"]
         choice = ask_prompt(title, choices=choices, default="0")
         if choice == "0":
@@ -1485,9 +1545,36 @@ def settings_menu() -> None:
     ))
 
 
+def _show_dashboard_status() -> None:
+    codex_ready = shutil.which("codex") is not None
+    sdk_ready = bool(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or (Path.home() / "android-sdk").is_dir())
+    items = [
+        f"[bold]RUNTIME[/]  [green]Python {sys.version_info.major}.{sys.version_info.minor}[/]",
+        f"[bold]CODEX CLI[/]  [{'green' if codex_ready else 'yellow'}]{'Pronto' if codex_ready else 'Opcional'}[/]",
+        f"[bold]ANDROID SDK[/]  [{'green' if sdk_ready else 'yellow'}]{'Detectado' if sdk_ready else 'Sob demanda'}[/]",
+    ]
+    columns = 3 if console.width >= 105 else 2 if console.width >= 76 else 1
+    status = Table.grid(expand=True, padding=(0, 2))
+    for _ in range(columns):
+        status.add_column(ratio=1)
+    for index in range(0, len(items), columns):
+        row = items[index:index + columns]
+        status.add_row(*(row + [""] * (columns - len(row))))
+    console.print(Panel(status, title="AMBIENTE LOCAL", border_style="grey50", box=box.ROUNDED, padding=(0, 1)))
+
+
 def menu() -> None:
     while True:
         banner()
+        console.print(Panel(
+            "[bold white]Seu espaço de trabalho para levar projetos e jogos ao Android.[/]\n"
+            "[dim]Analise primeiro. Planeje a adaptação. Revise cada mudança antes de compilar.[/]",
+            title="PORTABILIDADE ANDROID",
+            border_style="bright_red",
+            box=box.ROUNDED,
+            padding=(0, 2),
+        ))
+        _show_dashboard_status()
         categories = (
             ("1", "01 — PROJETOS", projects_menu),
             ("2", "02 — APK BUILD CENTER", apk_build_center_menu),
@@ -1495,12 +1582,18 @@ def menu() -> None:
             ("4", "04 — GAME PORTABILITY", game_portability_menu),
             ("5", "05 — CONFIGURAÇÕES", settings_menu),
         )
-        for number, name, _action in categories:
-            console.print(f"[bold bright_magenta]{translate_text(name)}[/]")
-        console.print("0. Sair")
+        console.print("\n[bold white]ÁREAS DE TRABALHO[/]")
+        _render_menu_cards(categories, {
+            "01 — PROJETOS": "Encontre projetos, analise tecnologias e abra relatórios.",
+            "02 — APK BUILD CENTER": "Compile, inspecione, assine e valide pacotes Android.",
+            "03 — TRADUÇÃO": "Localize conteúdo de projetos e recursos de APKs.",
+            "04 — GAME PORTABILITY": "Analise engines e planeje a jornada do jogo até o Android.",
+            "05 — CONFIGURAÇÕES": "Idioma, diagnóstico e informações da ferramenta.",
+        })
+        console.print("[bold bright_red]0.[/] Sair")
         choice = ask_prompt("PortAI", choices=[number for number, _name, _action in categories] + ["0"], default="1")
         if choice == "0":
-            console.print(Panel("[bold bright_magenta]OffTec PortAI encerrado. Até a próxima![/]", border_style="magenta"))
+            console.print(Panel("[bold bright_red]OffTec PortAI encerrado. Até a próxima![/]", border_style="red"))
             break
         next(action for number, _name, action in categories if number == choice)()
 
