@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">OffTec PortAI — do projeto ao bolso</title>
+  <desc id="desc">Arte cyberpunk de um terminal de desenvolvimento conectando jogos a um dispositivo Android.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071016"/>
+      <stop offset=".55" stop-color="#101923"/>
+      <stop offset="1" stop-color="#071116"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#ff6b35" stop-opacity=".05"/>
+      <stop offset=".5" stop-color="#ff6b35" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#ffc15b" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#14252a"/>
+      <stop offset="1" stop-color="#0b141b"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#a2c7c0" stroke-opacity=".055" stroke-width="1"/>
+    </pattern>
+    <filter id="glow" x="-.5" y="-.5" width="2" height="2">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="630" rx="28" fill="url(#grid)"/>
+  <path d="M0 565C240 500 380 595 640 520S1000 470 1200 530V630H0Z" fill="#09141a" opacity=".8"/>
+  <path d="M0 565C240 500 380 595 640 520S1000 470 1200 530" fill="none" stroke="#ff6b35" stroke-opacity=".45" stroke-width="2"/>
+
+  <g opacity=".8" fill="#ffb35c" font-family="monospace" font-size="12">
+    <text x="58" y="74">PORTABILITY // FIELD TERMINAL</text>
+    <text x="942" y="74">TERMUX · ANDROID</text>
+  </g>
+  <circle cx="1115" cy="70" r="5" fill="#a6f0b4" filter="url(#glow)"/>
+
+  <g transform="translate(64 132)">
+    <path d="M0 0h493a18 18 0 0 1 18 18v278a18 18 0 0 1-18 18H18A18 18 0 0 1 0 296Z" fill="#091116" stroke="#60767a" stroke-opacity=".55" stroke-width="2"/>
+    <path d="M0 18A18 18 0 0 1 18 0h475a18 18 0 0 1 18 18v30H0Z" fill="#17232a"/>
+    <circle cx="24" cy="24" r="5" fill="#ff7058"/><circle cx="43" cy="24" r="5" fill="#ffc05e"/><circle cx="62" cy="24" r="5" fill="#8edca0"/>
+    <text x="92" y="28" fill="#9badad" font-family="monospace" font-size="12">offtec-portai — analysis</text>
+    <text x="28" y="91" fill="#ff8753" font-family="monospace" font-size="15">$ portai scan ./my-game</text>
+    <text x="28" y="124" fill="#9ce4ac" font-family="monospace" font-size="13">[ OK ] project detected</text>
+    <text x="28" y="151" fill="#b7c8c6" font-family="monospace" font-size="13">engine: Godot · target: Android</text>
+    <text x="28" y="178" fill="#b7c8c6" font-family="monospace" font-size="13">input: keyboard + mouse</text>
+    <text x="28" y="205" fill="#ffbf64" font-family="monospace" font-size="13">[ !! ] review desktop APIs</text>
+    <path d="M28 233h394" stroke="#33474b"/>
+    <text x="28" y="263" fill="#82d9bf" font-family="monospace" font-size="13">report → Markdown / JSON</text>
+    <rect x="28" y="281" width="8" height="15" fill="#ff8753"/>
+  </g>
+
+  <path d="M585 300h94" stroke="url(#beam)" stroke-width="4" filter="url(#glow)"/>
+  <path d="m663 287 18 13-18 13" fill="none" stroke="#ff9a52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="625" cy="300" r="29" fill="#121f24" stroke="#ff8753" stroke-opacity=".6"/>
+  <path d="M611 300h28m-9-9 9 9-9 9" fill="none" stroke="#ffd090" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g transform="translate(711 125)">
+    <rect x="0" y="0" width="251" height="376" rx="34" fill="#080f13" stroke="#91a39e" stroke-opacity=".8" stroke-width="3"/>
+    <rect x="12" y="17" width="227" height="342" rx="24" fill="url(#screen)" stroke="#32464a"/>
+    <rect x="85" y="8" width="80" height="5" rx="3" fill="#506267"/>
+    <text x="34" y="54" fill="#95aaa7" font-family="monospace" font-size="11">ANDROID BUILD / 01</text>
+    <path d="M33 75h185" stroke="#3e5356"/>
+    <text x="34" y="111" fill="#ff9b55" font-family="monospace" font-size="12">PORT TARGET</text>
+    <text x="34" y="139" fill="#e2eee7" font-family="monospace" font-size="18">TOUCH READY</text>
+    <g transform="translate(45 175)" fill="none" stroke="#9fe7ad" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M24 43c-3-9-1-19 5-27 8-10 20-14 34-14s26 4 34 14c6 8 8 18 5 27l-5 18c-2 8-12 10-18 5l-11-9H58l-11 9c-6 5-16 3-18-5Z"/>
+      <path d="M43 31v18m-9-9h18"/><circle cx="86" cy="34" r="3" fill="#9fe7ad" stroke="none"/><circle cx="97" cy="45" r="3" fill="#ff9b55" stroke="none"/>
+    </g>
+    <g transform="translate(165 176)" fill="none" stroke="#ff9b55" stroke-width="2">
+      <rect x="0" y="0" width="49" height="77" rx="9"/>
+      <path d="M13 7h23M21 68h7"/>
+      <path d="M11 28h27M11 38h27M11 48h18" stroke-opacity=".55"/>
+    </g>
+    <text x="34" y="294" fill="#a8beba" font-family="monospace" font-size="11">ANALYZE · ADAPT · BUILD</text>
+    <rect x="34" y="309" width="183" height="25" rx="12" fill="#19362e" stroke="#6acb91" stroke-opacity=".7"/>
+    <circle cx="48" cy="321.5" r="4" fill="#9fe7ad"/>
+    <text x="60" y="326" fill="#b8f0c1" font-family="monospace" font-size="10">WORKSPACE ISOLATED</text>
+  </g>
+
+  <g transform="translate(1000 186)" opacity=".55" fill="none" stroke="#ff9b55" stroke-width="2">
+    <path d="M0 22h25l12-12h37M0 51h42l12 12h43M5 86h20l10 10h38"/>
+    <circle cx="80" cy="10" r="4" fill="#ff9b55"/><circle cx="97" cy="63" r="4" fill="#ff9b55"/><circle cx="73" cy="96" r="4" fill="#ff9b55"/>
+  </g>
+
+  <text x="65" y="477" fill="#f1f6f0" font-family="Arial, Helvetica, sans-serif" font-size="43" font-weight="700" letter-spacing="1">OFFTEC <tspan fill="#ff8753">PORTAI</tspan></text>
+  <text x="67" y="510" fill="#aac0bb" font-family="Arial, Helvetica, sans-serif" font-size="19" letter-spacing="2">DO PROJETO AO BOLSO</text>
+  <text x="67" y="574" fill="#7e9691" font-family="monospace" font-size="12">GAME PORTABILITY  /  TERMUX TOOLING  /  ANDROID</text>
+  <path d="M67 590h265" stroke="#ff8753" stroke-width="3"/>
+</svg>

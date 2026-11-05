@@ -1,10 +1,28 @@
 # OffTec PortAI
 
-**Assistente experimental para analisar projetos Windows e apoiar sua adaptação para Android no Termux.**
+<p align="center">
+  <img src="assets/portai-hero.svg" alt="OffTec PortAI: jogos, terminal Termux e portabilidade para Android" width="100%">
+</p>
 
-O PortAI identifica tecnologias e dependências que podem exigir ajustes, gera relatórios e, opcionalmente, usa o Codex CLI para trabalhar em uma cópia isolada do projeto.
+<p align="center"><strong>Do projeto ao bolso.</strong><br>Analise projetos e explore caminhos para levá-los ao Android com as ferramentas do Termux.</p>
 
-> O PortAI não converte automaticamente qualquer programa Windows em um aplicativo Android. Os resultados da análise são heurísticos e devem ser revisados.
+---
+
+**OffTec PortAI** é um assistente experimental para analisar projetos Windows e apoiar sua adaptação para Android no Termux. Ele identifica tecnologias e dependências que podem exigir ajustes, gera relatórios e, opcionalmente, usa o Codex CLI para trabalhar em uma cópia isolada do projeto.
+
+> **Escopo:** o PortAI não converte automaticamente qualquer programa Windows em um aplicativo Android. As análises são heurísticas; revise os resultados e valide cada build no dispositivo.
+
+## Navegação
+
+- [Recursos](#recursos)
+- [Requisitos](#requisitos)
+- [Instalação](#instalação)
+- [Integração com Codex](#integração-com-codex)
+- [Tradução de projetos e APKs](#universal-translation-engine)
+- [Portabilidade de jogos](#ai-game-recreation-engine)
+- [Idioma da interface](#idioma-da-interface)
+- [Limitações](#limitações)
+- [Licença](#licença)
 
 ## Recursos
 
