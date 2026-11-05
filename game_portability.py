@@ -16,6 +16,7 @@ IGNORED_DIRS = {
     ".git", ".gradle", ".idea", ".venv", "venv", "node_modules", "__pycache__",
     "build", "dist", "target", "bin", "obj", "Library", "Temp", "Logs",
     "Intermediate", "Binaries", ".godot", ".import", "workspaces",
+    ".svn", ".hg", "Saved", "DerivedDataCache", "obj_tmp",
 }
 LANGUAGES = {
     ".cs": "C#", ".cpp": "C++", ".cc": "C++", ".c": "C", ".h": "C/C++",
@@ -242,7 +243,7 @@ def analyze_game_project(project: Path) -> dict[str, Any]:
             if path.stat().st_size > MAX_TEXT_BYTES:
                 skipped_large += 1
                 continue
-            content = path.read_text(encoding="utf-8", errors="replace")
+            content = path.read_bytes().decode("utf-8", errors="replace")
             inspected += 1
         except OSError:
             continue
@@ -259,6 +260,36 @@ def analyze_game_project(project: Path) -> dict[str, Any]:
     text_findings = {key: sorted(set(value)) for key, value in findings.items()}
     portability = _classify_portability(primary_engine, root, paths, text_findings)
     dependencies = _engine_dependencies(root, primary_engine, paths)
+    # Evidence based checklist: a missing marker means "not detected", not incompatible.
+    relative_lower = {p.relative_to(root).as_posix().lower(): p for p in paths}
+    android_markers = [name for name in relative_lower if any(token in name for token in (
+        "android", "export_presets.cfg", "google-services.json", "gradle.properties",
+    ))]
+    has_manifest = "androidmanifest.xml" in relative_lower
+    touch_files = sorted(set(text_findings.get("keyboard", []) + text_findings.get("mouse", [])))
+    engine_version = "não detectada"
+    version_file = relative_lower.get("projectsettings/projectversion.txt")
+    if version_file:
+        try:
+            version_match = re.search(r"m_EditorVersion:\s*([^\s]+)", version_file.read_text(encoding="utf-8", errors="replace"))
+            if version_match:
+                engine_version = version_match.group(1)
+        except OSError:
+            pass
+    elif primary_engine == "Godot" and "project.godot" in relative_lower:
+        try:
+            godot_text = relative_lower["project.godot"].read_text(encoding="utf-8", errors="replace")
+            version_match = re.search(r"config/features\s*=\s*\[([^]]*)\]", godot_text)
+            if version_match:
+                engine_version = version_match.group(1).strip()
+        except OSError:
+            pass
+    portability_checks = [
+        {"check": "Configuração/plataforma Android", "status": "detectada" if android_markers or has_manifest else "não detectada", "evidence": (android_markers[:8] or portability["android_build_configs"][:8])},
+        {"check": "Pontos de entrada para controles", "status": "revisão recomendada" if touch_files else "sem referências desktop detectadas", "evidence": touch_files[:8]},
+        {"check": "APIs Windows/desktop", "status": "revisão necessária" if text_findings.get("windows_api") or text_findings.get("desktop_file_api") else "sem referências detectadas", "evidence": (text_findings.get("windows_api", []) + text_findings.get("desktop_file_api", []))[:8]},
+        {"check": "Toolchain disponível neste ambiente", "status": "verificar por engine/host", "evidence": [f"{name}: {value or 'não encontrado'}" for name, value in portability["available_tools"].items() if value]},
+    ]
     directories = sorted({path.relative_to(root).parts[0] for path in paths if path.relative_to(root).parts})
     engine_markers = [path.relative_to(root).as_posix() for path in paths if path.name == "project.godot" or path.suffix.lower() in {".uproject", ".yyp"} or "ProjectSettings/ProjectVersion.txt" in path.relative_to(root).as_posix()]
     for path in paths:
@@ -270,6 +301,7 @@ def analyze_game_project(project: Path) -> dict[str, Any]:
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "project": str(root),
         "engine": engine,
+        "engine_version": engine_version,
         "detected_engines": detected_engines,
         "engine_markers": engine_markers,
         "files_found": len(paths),
@@ -277,10 +309,16 @@ def analyze_game_project(project: Path) -> dict[str, Any]:
         "large_text_files_skipped": skipped_large,
         "top_level_directories": directories,
         "dependencies": dependencies,
+        "portability_checks": portability_checks,
+        "android_config_detected": bool(android_markers or has_manifest),
         "findings": text_findings,
         "candidate_files": [
             {"path": name, "reasons": sorted(reasons)}
-            for name, reasons in sorted(candidates.items())
+            for name, reasons in sorted(candidates.items(), key=lambda pair: (
+                0 if any(reason in {"windows_api", "desktop_file_api"} for reason in pair[1]) else
+                1 if any(reason in {"keyboard", "mouse", "graphics", "performance"} for reason in pair[1]) else 2,
+                pair[0].casefold(),
+            ))
         ],
         **portability,
         "limitations": [
@@ -312,6 +350,10 @@ def save_game_report(report: dict[str, Any], reports_dir: Path) -> tuple[Path, P
         "", "## Controles e compatibilidade",
     ]
     lines += [f"- **{item['severity']} — {item['area']}:** {item['evidence']}. Ação sugerida: {item['action']}" for item in report["incompatibilities"]] or ["- Nenhuma incompatibilidade conhecida detectada; isso não comprova compatibilidade Android."]
+    lines += ["", f"## Engine e versão", f"- {report.get('engine_version', 'não detectada')}", "", "## Verificações de portabilidade"]
+    lines += [f"- **{item['status']} — {item['check']}**" + (f": {', '.join(item['evidence'])}" if item.get("evidence") else "") for item in report.get("portability_checks", [])]
+    lines += ["", "## Maiores assets"]
+    lines += [f"- `{item['path']}` — {item['size_bytes'] / (1024 * 1024):.1f} MiB" for item in report.get("largest_assets", [])[:10]] or ["- Nenhum asset reconhecido"]
     lines += ["", "## Arquivos candidatos à revisão"]
     lines += [f"- `{item['path']}` — {', '.join(item['reasons'])}" for item in report["candidate_files"]] or ["- Nenhum arquivo candidato"]
     lines += ["", "## Plano de portabilidade"] + [f"{index}. {step}" for index, step in enumerate(report["plan"], 1)]

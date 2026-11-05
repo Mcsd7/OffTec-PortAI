@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import difflib
+import hashlib
 import os
 import re
 import shutil
@@ -988,6 +990,128 @@ def _is_android_gradle_app(workspace: Path) -> bool:
     return False
 
 
+def _game_authorized_diff(workspace: Path, manifest_path: Path, authorized: list[str]) -> tuple[str, list[str]]:
+    """Build a review patch from the pre-edit backup and current authorized files."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = {item["path"]: item for item in manifest.get("entries", [])}
+    chunks: list[str] = []
+    changed: list[str] = []
+    for relative in authorized:
+        entry = entries.get(relative)
+        if not entry:
+            continue
+        target = (workspace / relative).resolve(strict=False)
+        base = workspace.resolve(strict=True)
+        current = base
+        has_link = False
+        for part in Path(relative).parts:
+            current /= part
+            has_link = has_link or current.is_symlink()
+        if base not in target.parents or has_link:
+            continue
+        before_path = (manifest_path.parent / entry["backup"]).resolve(strict=True) if entry.get("backup") else None
+        if before_path and manifest_path.parent.resolve(strict=True) not in before_path.parents:
+            continue
+        try:
+            before = before_path.read_bytes() if before_path else b""
+            after = target.read_bytes() if target.is_file() else b""
+        except OSError:
+            continue
+        if before == after:
+            continue
+        changed.append(relative)
+        if max(len(before), len(after)) > 1_000_000 or b"\0" in before or b"\0" in after:
+            chunks.append(f"Binary or large file changed: {relative}\n")
+            continue
+        old_text = before.decode("utf-8", errors="replace").splitlines(keepends=True)
+        new_text = after.decode("utf-8", errors="replace").splitlines(keepends=True)
+        chunks.extend(difflib.unified_diff(old_text, new_text, fromfile=f"before/{relative}", tofile=f"after/{relative}"))
+    return "".join(chunks), changed
+
+
+def _godot_android_preset(workspace: Path) -> str | None:
+    preset_file = workspace / "export_presets.cfg"
+    if not preset_file.is_file() or preset_file.is_symlink():
+        return None
+    try:
+        content = preset_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for section_text in re.split(r"(?=\[preset\.\d+\])", content):
+        if re.search(r'^platform\s*=\s*"Android"\s*$', section_text, re.M):
+            match = re.search(r'^name\s*=\s*"([^"]+)"\s*$', section_text, re.M)
+            if match:
+                return match.group(1)
+    return None
+
+
+def _run_game_export(workspace: Path, engine: str) -> tuple[int, str, str, Path | None, str]:
+    """Use an actual engine exporter when supported, otherwise the Android project build."""
+    if engine == "Godot":
+        executable = shutil.which("godot") or shutil.which("godot4")
+        preset = _godot_android_preset(workspace)
+        if not executable or not preset:
+            return 127, "", "Godot CLI ou preset Android export_presets.cfg não encontrado.", None, "Godot Android export"
+        output = workspace / "build" / "portai-game.apk"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        command = [executable, "--headless", "--path", str(workspace), "--export-debug", preset, str(output)]
+        try:
+            proc = subprocess.run(command, cwd=workspace, text=True, capture_output=True, timeout=3600, check=False)
+            apk = output if proc.returncode == 0 and output.is_file() and validate_apk(output) else None
+            return proc.returncode if apk else (proc.returncode or 1), proc.stdout, proc.stderr, apk, "Godot Android export"
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return 1, "", str(exc), None, "Godot Android export"
+    return (*run_build(workspace), "Gradle/CMake Android build")
+
+
+def _test_game_apk(apk: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    with apk.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    info: dict[str, Any] = {
+        "apk": str(apk), "size_bytes": apk.stat().st_size,
+        "sha256": digest.hexdigest(),
+        "zip_manifest_valid": validate_apk(apk), "signature": "não verificada",
+    }
+    signer = shutil.which("apksigner")
+    if signer:
+        try:
+            result = subprocess.run([signer, "verify", "--verbose", str(apk)], capture_output=True, text=True, timeout=60, check=False)
+            info["signature"] = "válida" if result.returncode == 0 else "inválida ou ausente"
+            info["signature_output"] = (result.stdout + result.stderr)[-3000:]
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            info["signature"] = f"verificação falhou: {exc}"
+    package_id = None
+    aapt = shutil.which("aapt")
+    if aapt:
+        try:
+            result = subprocess.run([aapt, "dump", "badging", str(apk)], capture_output=True, text=True, timeout=60, check=False)
+            match = re.search(r"^package: name='([^']+)'", result.stdout, re.M)
+            package_id = match.group(1) if match else None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if not package_id and shutil.which("apkanalyzer"):
+        try:
+            result = subprocess.run([shutil.which("apkanalyzer"), "manifest", "application-id", str(apk)], capture_output=True, text=True, timeout=60, check=False)
+            package_id = result.stdout.strip() if result.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    info["package_id"] = package_id
+    info["device_test"] = "não executado"
+    adb = shutil.which("adb")
+    devices: list[str] = []
+    if adb:
+        try:
+            result = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=15, check=False)
+            devices = [line.split()[0] for line in result.stdout.splitlines()[1:] if len(line.split()) >= 2 and line.split()[1] == "device"]
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    info["connected_devices"] = devices
+    info["adb_available"] = bool(adb)
+    return info
+
+
 def game_recreation_menu(initial_choice: str | None = None) -> None:
     from game_portability import (
         analyze_game_project, backup_authorized_files, restore_authorized_backup,
@@ -1009,12 +1133,21 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
         console.print(f"[red]Falha na análise de jogo: {exc}[/]")
         return
     console.print(Panel(
-        f"Engine: [cyan]{analysis['engine']}[/]\nArquivos: {analysis['files_found']} • scripts/código: {analysis['source_files']}\n"
+        f"Engine: [cyan]{analysis['engine']}[/] • versão: [cyan]{analysis.get('engine_version', 'não detectada')}[/]\nArquivos: {analysis['files_found']} • scripts/código: {analysis['source_files']}\n"
         f"Dependências identificadas: {len(analysis['dependencies'])}\nIncompatibilidades: {len(analysis['incompatibilities'])}\n"
         f"Build Android já configurado: {'sim, verificar antes de compilar' if analysis['build_ready'] else 'não detectado'}\n"
-        f"Host indicado: {analysis['external_build_host']}",
+        f"Host indicado: {analysis['external_build_host']}\n"
+        f"Marcador de configuração Android: {'detectado' if analysis['android_config_detected'] else 'não detectado'}",
         title="ANÁLISE DE PORTABILIDADE DE JOGO", border_style="bright_magenta",
     ))
+    for item in analysis.get("portability_checks", []):
+        evidence = ", ".join(item.get("evidence", [])) or "nenhum arquivo correspondente"
+        console.print(f"[bold]{item['status']}[/] • {item['check']}: [dim]{evidence}[/]")
+    if analysis.get("largest_assets"):
+        console.print("Assets maiores: " + " • ".join(
+            f"{item['path']} ({item['size_bytes'] / (1024 * 1024):.1f} MiB)"
+            for item in analysis["largest_assets"][:5]
+        ))
     console.print(f"Relatórios: {report_paths[0]} • {report_paths[1]}")
 
     workspace = find_workspace(source)
@@ -1052,7 +1185,7 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
             ("4", "Continuar sessão Codex persistente"),
             ("5", "Mostrar progresso e arquivos alterados"),
             ("6", "Recuperar backup dos arquivos autorizados"),
-            ("7", "Compilar build Gradle Android real"),
+            ("7", "Exportar/compilar e validar APK Android"),
             ("0", "Voltar ao menu principal"),
         ]:
             console.print(f"{number}. {label}")
@@ -1067,6 +1200,8 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
                 (workspace / "PORTAI_GAME_PORTABILITY_PLAN.json").write_text(json.dumps(analysis, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 _game_progress(workspace, state, analysis, report_paths)
                 console.print(f"[green]Análise atualizada: {report_paths[0]}[/]")
+                for item in analysis.get("portability_checks", []):
+                    console.print(f"[bold]{item['status']}[/] • {item['check']}: {', '.join(item.get('evidence', [])) or 'sem evidência'}")
             except (OSError, ValueError) as exc:
                 console.print(f"[red]{exc}[/]")
         elif choice == "2":
@@ -1116,16 +1251,22 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
                 "Adapt this game project toward Android using only these user-authorized existing files: "
                 + json.dumps(authorized, ensure_ascii=False)
                 + ". Do not edit or create any other path, do not access secrets, and do not modify the original project. "
-                "Keep changes minimal, preserve existing game logic and IDs, adapt input for touch only where these files allow, "
-                "and do not simulate builds. If required changes need other files or a Linux/Windows/macOS host, stop and report them "
+                "Keep the patch small and reviewable; preserve desktop behavior, game logic, save formats and IDs. For every keyboard/mouse action in scope, map the action to an appropriate touch control (virtual buttons, joystick, tap/drag gesture, or touch UI), explain placement/feedback and avoid hiding important game content. "
+                "For each Windows/desktop-only API in scope, propose and implement a concrete portable Android-capable alternative only when safe in these files; otherwise leave it unchanged and document the required adapter/file. Preserve existing behavior with platform guards when feasible. "
+                "Do not invent engine APIs or claim a build passed. If required changes need other files or a Linux/Windows/macOS host, stop and report them "
                 "without touching those paths. Context: " + json.dumps(plan_context, ensure_ascii=False)
-                + ". Record actual changed files and blockers in your response."
+                + ". Record each input action -> touch mapping, desktop API -> replacement (or blocker), changed paths, risks and blockers in your response."
             )
             codex_task(codex, workspace, state, prompt, sandbox="workspace-write")
             after = workspace_inventory(workspace)
             changed = sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+            diff_text, diff_changed = _game_authorized_diff(workspace, backup_manifest, authorized)
             state["game_last_modified_files"] = changed
             state["game_out_of_scope_changes"] = sorted(set(changed) - set(authorized))
+            state["game_authorized_diff_files"] = diff_changed
+            diff_path = workspace / "GAME_PORTABILITY_DIFF.patch"
+            diff_path.write_text(diff_text or "Nenhuma alteração textual autorizada foi detectada.\n", encoding="utf-8")
+            state["game_diff_path"] = str(diff_path)
             if state["game_out_of_scope_changes"]:
                 state["status"] = "revisão necessária: Codex alterou paths não autorizados"
                 state["last_error"] = "Alterações fora da lista autorizada: " + ", ".join(state["game_out_of_scope_changes"])
@@ -1133,6 +1274,9 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
             save_workspace_state(workspace, state)
             _game_progress(workspace, state, analysis, report_paths)
             console.print(f"Arquivos modificados detectados: {', '.join(changed) or 'nenhum'}")
+            console.print(f"Diff revisável: {diff_path} • arquivos autorizados alterados: {', '.join(diff_changed) or 'nenhum'}")
+            if diff_text:
+                console.print(Panel(diff_text[:12000], title="DIFF DAS ALTERAÇÕES AUTORIZADAS", border_style="cyan"))
         elif choice == "4":
             if not codex:
                 console.print("[red]Codex CLI não encontrado no PATH.[/]")
@@ -1164,30 +1308,56 @@ def game_recreation_menu(initial_choice: str | None = None) -> None:
                 except (OSError, ValueError, KeyError) as exc:
                     console.print(f"[red]Falha ao recuperar backup: {exc}[/]")
         elif choice == "7":
-            if not _is_android_gradle_app(workspace):
-                console.print(f"[yellow]Build não iniciado: não encontrei configuração de aplicativo Gradle Android. {analysis['external_build_host']}[/]")
+            godot_export = analysis["engine"] == "Godot" and bool(shutil.which("godot") or shutil.which("godot4")) and bool(_godot_android_preset(workspace))
+            supported_build = godot_export or _is_android_gradle_app(workspace) or ((workspace / "CMakeLists.txt").is_file() and bool(shutil.which("cmake")))
+            if not supported_build:
+                console.print(f"[yellow]Build não iniciada: falta um preset Godot Android utilizável ou configuração Android Gradle/CMake. Unity/Unreal/GameMaker precisam de exportador e toolchain próprios. {analysis['external_build_host']}[/]")
                 continue
-            if not ask_confirm("Executar a build Gradle real no workspace?", default=False):
+            if not ask_confirm("Exportar/compilar o jogo para Android no workspace?", default=False):
                 continue
             prior_apks = {path.resolve(): path.stat().st_mtime_ns for path in workspace.rglob("*.apk") if path.is_file()}
             state["status"] = "compilando projeto Android"
             save_workspace_state(workspace, state)
-            code, stdout, stderr, apk = run_build(workspace)
+            code, stdout, stderr, apk, build_method = _run_game_export(workspace, analysis["engine"])
             if apk and prior_apks.get(apk.resolve()) == apk.stat().st_mtime_ns:
                 code, apk = 1, None
                 stderr += "\nO APK localizado já existia antes desta execução; build não considerada como nova saída."
             build_result = {
                 "return_code": code, "apk": str(apk) if apk else None,
                 "validated": bool(apk and validate_apk(apk)),
+                "method": build_method,
                 "stdout_tail": stdout[-6000:], "stderr_tail": stderr[-6000:],
                 "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
+            if build_result["validated"] and apk:
+                build_result.update(_test_game_apk(apk))
+                devices = build_result.get("connected_devices", [])
+                package_id = build_result.get("package_id")
+                if devices and package_id and ask_confirm(f"Instalar e abrir {package_id} em {devices[0]} para teste?", default=False):
+                    adb = shutil.which("adb")
+                    try:
+                        installed = subprocess.run([adb, "-s", devices[0], "install", "-r", str(apk)], capture_output=True, text=True, timeout=300, check=False)
+                        build_result["device_install"] = {"return_code": installed.returncode, "stdout": installed.stdout[-3000:], "stderr": installed.stderr[-3000:]}
+                        if installed.returncode == 0:
+                            launched = subprocess.run([adb, "-s", devices[0], "shell", "monkey", "-p", package_id, "1"], capture_output=True, text=True, timeout=60, check=False)
+                            build_result["device_launch"] = {"return_code": launched.returncode, "stdout": launched.stdout[-3000:], "stderr": launched.stderr[-3000:]}
+                            time.sleep(2)
+                            process = subprocess.run([adb, "-s", devices[0], "shell", "pidof", package_id], capture_output=True, text=True, timeout=30, check=False)
+                            build_result["device_process"] = {"return_code": process.returncode, "pid": process.stdout.strip(), "stderr": process.stderr[-1000:]}
+                            build_result["device_test"] = "instalado e processo do jogo detectado" if launched.returncode == 0 and process.stdout.strip() else "instalação concluída; processo não confirmado após abertura"
+                        else:
+                            build_result["device_test"] = "falha na instalação"
+                    except (OSError, subprocess.TimeoutExpired) as exc:
+                        build_result["device_test"] = f"falha no teste do dispositivo: {exc}"
+                elif devices and not package_id:
+                    build_result["device_test"] = "dispositivo conectado, mas package id não pôde ser identificado (instale manualmente)"
             (workspace / "GAME_ANDROID_BUILD_RESULT.json").write_text(json.dumps(build_result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             state["status"] = "APK compilado e validado" if build_result["validated"] else "build Android falhou"
             state["last_error"] = None if build_result["validated"] else (stderr[-2000:] or "Build sem APK validado.")
             save_workspace_state(workspace, state)
             _game_progress(workspace, state, analysis, report_paths)
-            console.print(f"[green]APK real validado: {apk}[/]" if build_result["validated"] else f"[red]Nenhum APK validado (código {code}).[/]")
+            console.print(f"[green]APK validado: {apk} ({build_result.get('size_bytes', apk.stat().st_size)} bytes; SHA-256 {build_result.get('sha256', 'n/d')})[/]" if build_result["validated"] else f"[red]Nenhum APK validado (código {code}).[/]")
+            console.print(f"Método: {build_method} • Assinatura: {build_result.get('signature', 'não verificada')} • Teste em dispositivo: {build_result.get('device_test', 'não executado')}")
 
 
 def interface_language_menu() -> None:
