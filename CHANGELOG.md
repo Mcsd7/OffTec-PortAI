@@ -16,6 +16,7 @@
 - Added responsive Console Porting Studio navigation, project registry workflow, platform comparison and build runner.
 - Codex tasks now receive structured diagnostic context and create workspace backups with changed-file reports.
 - Workspace import skips symlinks to external files; Android CMake flow runs configure and build before APK verification.
+- Added compact localized labels for the expanded mobile navigation in Spanish and Arabic.
 
 ## 0.2.1
 - Busca automática por projetos de código em pastas comuns do Termux/armazenamento compartilhado.

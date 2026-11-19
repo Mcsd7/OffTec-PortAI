@@ -32,8 +32,8 @@ Comando: python -m unittest discover -s tests -v
 Resultado: 43 testes passaram; os 37 testes anteriores continuam passando.
 
 OffTec PortAI 0.3.0 console diagnostics extension:
-Comando: python -m py_compile portai.py portai_core/*.py tests/*.py
+Comando: python -m py_compile portai.py portai_core/*.py portai_translation/*.py portai_apk_translator.py apk_build_center.py game_portability.py portai_i18n.py tests/*.py
 Resultado: OK
 
 Comando: python -m unittest discover -s tests -v
-Resultado no branch de implementação: 25 testes passaram. Suíte completa combinada com recursos upstream será registrada após a integração.
+Resultado após integrar as funcionalidades upstream e o Console Porting Studio: 62 testes passaram.

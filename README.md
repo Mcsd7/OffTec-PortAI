@@ -8,7 +8,7 @@
 
 ---
 
-**OffTec PortAI** é um assistente experimental para analisar projetos Windows e apoiar sua adaptação para Android no Termux. Ele identifica tecnologias e dependências que podem exigir ajustes, gera relatórios e, opcionalmente, usa o Codex CLI para trabalhar em uma cópia isolada do projeto.
+**OffTec PortAI** é um estúdio de terminal para análise, adaptação e build de projetos Android e jogos. A interface Rich reúne Project Manager, APK Build Center, ferramentas de tradução, Game Portability e Console Porting Studio.
 
 > **Escopo:** o PortAI não converte automaticamente qualquer programa Windows em um aplicativo Android. As análises são heurísticas; revise os resultados e valide cada build no dispositivo.
 
