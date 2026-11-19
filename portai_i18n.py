@@ -34,6 +34,7 @@ _ROWS: dict[str, tuple[str, str, str, str]] = {
     "04 — GAME PORTABILITY": ("04 — GAME PORTABILITY", "04 — JUEGOS", "04 — الألعاب", "04 — गेम"),
     "05 — CONFIGURAÇÕES": ("05 — SETTINGS", "05 — CONFIGURACIÓN", "05 — الإعدادات", "05 — सेटिंग्स"),
     "06 — CONSOLE PORTING STUDIO": ("06 — CONSOLE PORTING STUDIO", "06 — ESTUDIO DE CONSOLAS", "06 — استوديو الأجهزة", "06 — कंसोल स्टूडियो"),
+    "07 — PORTAI AGENT": ("07 — PORTAI AGENT", "07 — AGENTE PORTAI", "07 — وكيل PORTAI", "07 — पोर्टएआई एजेंट"),
     "Histórico e relatórios": ("History and reports", "Historial e informes", "السجل والتقارير", "इतिहास और रिपोर्ट"),
     "APK Build Center": ("APK Build Center", "Centro de compilación APK", "مركز بناء APK", "APK बिल्ड सेंटर"),
     "Reconstruir APK com Apktool": ("Rebuild APK with Apktool", "Reconstruir APK con Apktool", "إعادة بناء APK باستخدام Apktool", "Apktool से APK फिर बनाएँ"),

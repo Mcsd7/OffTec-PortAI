@@ -1,7 +1,6 @@
 # Pending work
 
-- Add persistent per-project operation history and resumable analyzer/build tasks.
+- Add resumable build-process sessions where the underlying build tool supports safe continuation.
 - Detect dependencies more deeply in Unity/Unreal/Godot and Android SDK installations without assuming paths.
-- Add true streaming build log display and optional progress parsing.
-- Run Codex and Android APK builds in user environments when tools and credentials are available.
-- Review changes, run full suite, verify secrets and prepare release commit.
+- Verify live Codex and Android APK builds in a Termux environment with a working Codex runtime and authorized SDKs.
+- Add translated agent status strings for all interface locales.

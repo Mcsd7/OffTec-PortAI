@@ -39,6 +39,7 @@
 - CMake/Make/Gradle build runner com execução confirmada e distinção entre build concluído e preparação.
 - Backups ZIP da workspace antes de tarefas Codex, contexto JSON do projeto e lista dos arquivos alterados.
 - Registro local de projetos recentes e relatórios JSON/Markdown.
+- PORTAI AGENT: interface conversacional separada que orquestra o Codex existente, diagnósticos locais, tarefas persistentes, streaming e retomada de sessões.
 
 ## Requisitos
 
@@ -82,6 +83,14 @@ codex login status
 No PortAI, abra a opção de assistência com Codex e selecione um projeto. O aplicativo cria ou reutiliza uma cópia em `workspaces/`, preservando os arquivos originais. Backups da cópia são salvos em `workspaces/.backups/` antes de cada tarefa Codex; o contexto inclui o diagnóstico estático e ferramentas detectadas.
 
 A integração depende da versão instalada do Codex CLI. Consulte `codex exec --help` se a CLI não aceitar algum comando ou opção. Evite selecionar projetos que contenham credenciais, tokens ou outros dados privados.
+
+## PORTAI AGENT
+
+Na tela inicial, escolha **07 — PORTAI AGENT**. Envie uma solicitação livre, escolha uma ação rápida ou retome uma sessão. O agente procura projetos recentes por nome, aceita um caminho de pasta ou abre a seleção existente. Antes de chamar o Codex, analisa engines, linguagens, assets, APIs, toolchains e compatibilidade; adaptações ocorrem apenas na workspace isolada.
+
+Durante a execução, o agente transmite os eventos do Codex, mostra a etapa sem inventar porcentagens e aceita `Ctrl+C` para interromper. Use `/tasks` para consultar tarefas e `/resume ID` para retomar uma sessão Codex salva. O agente executa o Build Manager quando a solicitação pede compilação; APK só é reportado se o build efetivo produzir um artefato validado.
+
+Tarefas e memória por projeto ficam em `~/.local/share/offtec-portai/` (ou no caminho definido por `PORTAI_AGENT_HOME`), com arquivos JSON de acesso privado. Relatórios são gravados em `reports/`; backups de execução ficam na pasta `backups/` do diretório de dados. Se `codex --version` falhar, o agente para sem inventar respostas e oferece o diagnóstico do ambiente.
 
 ## Universal Translation Engine
 
@@ -132,6 +141,7 @@ Abra **Configurações** no menu principal para escolher Português brasileiro, 
 
 - `portai.py`: aplicativo de terminal.
 - `portai_core/`: adaptadores, analyzer, compatibility, builds, Codex, projetos e relatórios.
+- `portai_agent_ui.py`: interface conversacional do agente.
 - `game_portability.py`: análise heurística e relatórios de portabilidade de jogos.
 - `samples/demo_windows/`: exemplo didático de projeto Windows.
 - `tests/`: testes automatizados.

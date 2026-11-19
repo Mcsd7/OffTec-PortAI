@@ -13,4 +13,6 @@ def write_report(report: dict[str,Any], directory: Path) -> tuple[Path,Path]:
     js.write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     lines=["# OffTec PortAI — Diagnóstico","",f"- Projeto: `{payload.get('project','não informado')}`",f"- Origem: {payload.get('source','não informada')}",f"- Destino: {payload.get('target','não informado')}",f"- Resultado: **{payload.get('classification',payload.get('verdict','não concluído'))}**","","## Registro completo","", "```json", json.dumps(payload,indent=2,ensure_ascii=False),"```"]
     md.write_text("\n".join(lines)+"\n",encoding="utf-8")
+    # Reports may contain user prompts and project paths; keep them private locally.
+    js.chmod(0o600); md.chmod(0o600)
     return md,js

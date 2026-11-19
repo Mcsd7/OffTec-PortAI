@@ -72,6 +72,7 @@ class CoreTests(unittest.TestCase):
             md,js=write_report({"project":str(project),"classification":"analyzed"},root/"reports")
             self.assertIn("analyzed",md.read_text())
             self.assertEqual(json.loads(js.read_text())["project"],str(project))
+            self.assertEqual(js.stat().st_mode & 0o077,0)
 
     def test_workspace_copy_skips_external_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:

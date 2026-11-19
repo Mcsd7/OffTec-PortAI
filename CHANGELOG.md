@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — PORTAI AGENT
+- Added a separate conversational PORTAI AGENT experience with welcome screen, Codex status, ten actionable quick prompts, project selection and chat history.
+- Reused the existing Codex CLI command builders and sandbox; tasks now stream JSONL output, support interruption and resume saved Codex threads.
+- Added private, atomic task and per-project memory persistence, restart recovery, local diagnostics, compatibility context, reports and workspace backups.
+- Connected explicit build requests to the existing Android Build Manager or local CMake/Make/Gradle runner; streaming build logs and status are recorded.
+- Added tests for task persistence, routing, project selection, diagnostics, Codex execution/resume, streaming, cancellation and security.
+
 ## 0.3.0
 - Universal Translation Engine modular com extração e saída localizada para JSON, XML/Android, TXT, CSV, PO, RESX, properties, INI e YAML.
 - Camada de provedores offline, adaptador por comando e plugin Python sem endpoints ou credenciais embutidos.

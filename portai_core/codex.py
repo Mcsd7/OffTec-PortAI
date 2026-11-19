@@ -14,7 +14,11 @@ def file_inventory(root: Path) -> dict[str,str]:
         for name in names:
             path=base/name
             if path.is_symlink() or not path.is_file(): continue
-            try: result[path.relative_to(root).as_posix()]=hashlib.sha256(path.read_bytes()).hexdigest()
+            try:
+                digest=hashlib.sha256()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda:stream.read(1024*1024),b""): digest.update(chunk)
+                result[path.relative_to(root).as_posix()]=digest.hexdigest()
             except OSError: continue
     return result
 

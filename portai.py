@@ -48,7 +48,7 @@ console = LocalizedConsole()
 ROOT = Path(__file__).resolve().parent
 REPORTS = ROOT / "reports"
 WORKSPACES = ROOT / "workspaces"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 MAX_FILES = 3000
 MAX_TEXT_BYTES = 1_000_000
 MAX_SCAN_DIRS = 25000
@@ -590,7 +590,7 @@ def run_codex(codex: str, workspace: Path, prompt: str, timeout: int = 1800, res
 ANDROID_REBUILD_PROMPT = """Reconstruct this project for Android in the current isolated workspace. First inspect its architecture, UI framework, dependencies, build configuration and platform-specific APIs. Reuse portable business logic where possible; adapt or rewrite the UI and replace incompatible libraries when needed. Create the Android project/configuration required by the most suitable strategy available here (native Android/Gradle, NDK/CMake, or an appropriate existing framework). Check available Java, Gradle, Android SDK, NDK and CMake tools before choosing. Install dependencies only when necessary and report permission, network and compatibility failures. Run relevant tests, attempt to build an installable APK, inspect and fix viable build errors, and keep trying while a practical correction remains. Never claim success without an APK file produced by a successful build. Record approach, blockers, commands, test/build results and changed files in ANDROID_PORT_PROGRESS.md. Do not access secrets or modify files outside this workspace."""
 
 
-def run_build(workspace: Path) -> tuple[int, str, str, Path | None]:
+def run_build(workspace: Path, on_output=None, stop_event=None) -> tuple[int, str, str, Path | None]:
     """Run a locally available Android build and return only a verified APK."""
     env = os.environ.copy()
     sdk = env.get("ANDROID_HOME") or env.get("ANDROID_SDK_ROOT")
@@ -640,12 +640,20 @@ def run_build(workspace: Path) -> tuple[int, str, str, Path | None]:
                 [str(runtime_lib), *(part for part in inherited if part and Path(part).resolve() != runtime_lib)]
             )
     try:
-        proc = subprocess.run(command, cwd=workspace, env=env, text=True, capture_output=True, timeout=3600, check=False)
+        if on_output is not None or stop_event is not None:
+            from portai_core.agent import stream_process
+            result = stream_process(command, workspace, timeout=3600, on_output=on_output, stop_event=stop_event, env=env)
+            proc = subprocess.CompletedProcess(command, 130 if result["interrupted"] else 124 if result["timed_out"] else result["returncode"], result["output"], "")
+        else:
+            proc = subprocess.run(command, cwd=workspace, env=env, text=True, capture_output=True, timeout=3600, check=False)
         if proc.returncode == 0 and Path(command[0]).name == "cmake" and "-S" in command:
-            built = subprocess.run([command[0], "--build", str(workspace / "build-android")], cwd=workspace,
-                                   env=env, text=True, capture_output=True, timeout=3600, check=False)
-            proc = subprocess.CompletedProcess(built.args, built.returncode, proc.stdout + "\n" + built.stdout,
-                                               proc.stderr + "\n" + built.stderr)
+            build_command = [command[0], "--build", str(workspace / "build-android")]
+            if on_output is not None or stop_event is not None:
+                built_result = stream_process(build_command, workspace, timeout=3600, on_output=on_output, stop_event=stop_event, env=env)
+                built = subprocess.CompletedProcess(build_command, 130 if built_result["interrupted"] else 124 if built_result["timed_out"] else built_result["returncode"], built_result["output"], "")
+            else:
+                built = subprocess.run(build_command, cwd=workspace, env=env, text=True, capture_output=True, timeout=3600, check=False)
+            proc = subprocess.CompletedProcess(built.args, built.returncode, proc.stdout + "\n" + built.stdout, proc.stderr + "\n" + built.stderr)
         apk = find_apk(workspace) if proc.returncode == 0 else None
         if proc.returncode == 0 and apk is None:
             return proc.returncode, proc.stdout, proc.stderr + "\nBuild terminou sem APK não vazio encontrado.", None
@@ -923,6 +931,12 @@ def console_porting_studio() -> None:
                 md,js=write_report(report,REPORTS)
                 console.print(Panel(f"Engines: {', '.join(analysis['engines'])}\nArquivos lidos: {analysis['files_scanned']}\nSinais de APIs: {sum(len(x) for x in analysis['graphics_audio_input_signals'].values())}\nRelatório: {md.name} / {js.name}",title="Diagnóstico",border_style="bright_magenta"))
             except (OSError,ValueError) as exc: console.print(f"[red]Operação falhou: {exc}[/]")
+
+
+def portai_agent_menu() -> None:
+    """Launch the separate PORTAI AGENT conversational experience."""
+    from portai_agent_ui import open_agent
+    open_agent(sys.modules[__name__])
 
 def run_analysis() -> None:
     source = select_project()
@@ -1707,6 +1721,7 @@ def menu() -> None:
             ("4", "04 — GAME PORTABILITY", game_portability_menu),
             ("5", "05 — CONFIGURAÇÕES", settings_menu),
             ("6", "06 — CONSOLE PORTING STUDIO", console_porting_studio),
+            ("7", "07 — PORTAI AGENT", portai_agent_menu),
         )
         console.print("\n[bold white]ÁREAS DE TRABALHO[/]")
         _render_menu_cards(categories, {
@@ -1716,6 +1731,7 @@ def menu() -> None:
             "04 — GAME PORTABILITY": "Analise engines e planeje a jornada do jogo até o Android.",
             "05 — CONFIGURAÇÕES": "Idioma, diagnóstico e informações da ferramenta.",
             "06 — CONSOLE PORTING STUDIO": "Adaptadores de console, compatibilidade e builds locais.",
+            "07 — PORTAI AGENT": "Agente conversacional de desenvolvimento com Codex e tarefas persistentes.",
         })
         console.print("[bold bright_red]0.[/] Sair")
         choice = ask_prompt("PortAI", choices=[number for number, _name, _action in categories] + ["0"], default="1")

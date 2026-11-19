@@ -1,9 +1,9 @@
 # Development progress
 
-- Last completed: release 0.3.0 validated and pushed to `origin/main` (2026-11-19).
-- Modules: 16 console adapters + Android/Windows/Linux destinations, analyzer, compatibility engine, tool/build manager, project registry, reports, dashboard/navigation, Codex context, workspace backups and file comparison.
-- Tests: full compilation passed; `python -m unittest discover -s tests -v` passed 62/62, including translation, APK build/signing, game analysis, localization, existing Codex, and new console diagnostics.
-- Changed files: `portai.py`, `portai_core/`, `tests/test_core.py`, `portai_i18n.py`, `README.md`, `CHANGELOG.md`, `TEST_RESULTS.txt`, `TODO.md`, `docs/ARCHITECTURE.md`, `.gitignore`, `PROGRESS.md`.
-- Next exact task: optional follow-up work is listed in `TODO.md`; no release actions remain.
-- Known limitations: analyzers are heuristic; local build runner recognizes Gradle/CMake/Make and does not claim an APK; console SDKs require vendor authorization; resumable task orchestration is pending. Existing APK translation, signing, and game portability flows remain intact.
-- Pending dependencies: none beyond existing Rich requirement.
+- Last completed: PORTAI AGENT module implemented; release commit and push pending.
+- Modules: separate Rich chat UI, quick actions, project selection, Codex status, task orchestration, JSONL streaming, persistent task/project memory, task recovery/resume, workspace-only execution, backups/diffs, analyzer and compatibility context, delegated build execution.
+- Tests: agent suite passed 13/13; full suite passed 75/75; Python compilation and `git diff --check` passed.
+- Changed files: `portai.py`, `portai_agent_ui.py`, `portai_core/agent.py`, `portai_core/build.py`, `portai_core/codex.py`, `portai_core/reports.py`, `portai_core/__init__.py`, `portai_i18n.py`, `tests/test_agent.py`, `tests/test_core.py`, `README.md`, `CHANGELOG.md`, `TODO.md`, `docs/ARCHITECTURE.md`, `PROGRESS.md`, `TEST_RESULTS.txt`.
+- Next exact task: inspect final diff, commit the PORTAI AGENT module and documentation, then push `main` to `origin`.
+- Known limitations: live Codex could not run in this Termux installation because its executable fails to load a Termux runtime symbol; console SDK compilation requires authorized vendor SDKs; resumable build processes and broader localized status strings remain pending.
+- Pending dependencies: none beyond existing Rich requirement; a working Codex runtime is required for live agent execution.

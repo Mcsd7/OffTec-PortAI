@@ -23,17 +23,26 @@ def detect_build_command(project: Path) -> list[str] | None:
         return [gradle,"assembleDebug"] if gradle else None
     return None
 
-def run_build(project: Path, timeout: int=1800) -> dict:
+def run_build(project: Path, timeout: int=1800, on_output=None, stop_event=None) -> dict:
     project=project.resolve(strict=True)
     if not project.is_dir(): raise ValueError("Build target precisa ser diretório")
     if not 1<=timeout<=7200: raise ValueError("Timeout deve ficar entre 1 e 7200 segundos")
     command=detect_build_command(project)
     if not command: return {"status":"not_run","reason":"Nenhum build conhecido com ferramenta compatível detectado.","command":None}
     try:
-        proc=subprocess.run(command,cwd=str(project),capture_output=True,text=True,timeout=timeout,check=False,shell=False)
+        if on_output is not None or stop_event is not None:
+            from .agent import stream_process
+            streamed=stream_process(command,project,timeout=timeout,on_output=on_output,stop_event=stop_event)
+            proc=subprocess.CompletedProcess(command,130 if streamed["interrupted"] else 124 if streamed["timed_out"] else streamed["returncode"],streamed["output"],"")
+        else:
+            proc=subprocess.run(command,cwd=str(project),capture_output=True,text=True,timeout=timeout,check=False,shell=False)
         if proc.returncode == 0 and command[0] and Path(command[0]).name == "cmake" and "-S" in command:
             build_cmd=[command[0],"--build",str(project/"build")]
-            built=subprocess.run(build_cmd,cwd=str(project),capture_output=True,text=True,timeout=timeout,check=False,shell=False)
+            if on_output is not None or stop_event is not None:
+                streamed=stream_process(build_cmd,project,timeout=timeout,on_output=on_output,stop_event=stop_event)
+                built=subprocess.CompletedProcess(build_cmd,130 if streamed["interrupted"] else 124 if streamed["timed_out"] else streamed["returncode"],streamed["output"],"")
+            else:
+                built=subprocess.run(build_cmd,cwd=str(project),capture_output=True,text=True,timeout=timeout,check=False,shell=False)
             proc=subprocess.CompletedProcess(build_cmd,built.returncode,proc.stdout+"\n"+built.stdout,proc.stderr+"\n"+built.stderr)
         return {"status":"succeeded" if proc.returncode==0 else "failed","returncode":proc.returncode,"command":command,"stdout":proc.stdout[-20000:],"stderr":proc.stderr[-20000:],"artifact":None}
     except subprocess.TimeoutExpired as exc:
