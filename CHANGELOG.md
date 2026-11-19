@@ -10,6 +10,9 @@
 - AI Game Recreation Engine: análise heurística de engines, linguagens, dependências, controles, APIs desktop, gráficos e candidatos a adaptação Android; plano e relatórios.
 - Integração opcional com sessão Codex persistente na cópia isolada, autorização de arquivos, backup/recuperação e progresso; build Gradle real validada quando aplicável.
 - Localização offline centralizada da interface em pt-BR, en, es, ar e hi, com configuração persistente, suporte Unicode e direção bidirecional best-effort no terminal.
+- Added modular platform metadata for all requested console generations and host destinations, with explicit SDK and compilation limits.
+- Added read-only game-project analyzer, evidence-linked compatibility findings, host tool detection, bounded safe build execution, project registry and JSON/Markdown report writer.
+- Core diagnostic modules use only Python's standard library.
 
 ## 0.2.1
 - Busca automática por projetos de código em pastas comuns do Termux/armazenamento compartilhado.
