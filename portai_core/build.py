@@ -31,6 +31,10 @@ def run_build(project: Path, timeout: int=1800) -> dict:
     if not command: return {"status":"not_run","reason":"Nenhum build conhecido com ferramenta compatível detectado.","command":None}
     try:
         proc=subprocess.run(command,cwd=str(project),capture_output=True,text=True,timeout=timeout,check=False,shell=False)
+        if proc.returncode == 0 and command[0] and Path(command[0]).name == "cmake" and "-S" in command:
+            build_cmd=[command[0],"--build",str(project/"build")]
+            built=subprocess.run(build_cmd,cwd=str(project),capture_output=True,text=True,timeout=timeout,check=False,shell=False)
+            proc=subprocess.CompletedProcess(build_cmd,built.returncode,proc.stdout+"\n"+built.stdout,proc.stderr+"\n"+built.stderr)
         return {"status":"succeeded" if proc.returncode==0 else "failed","returncode":proc.returncode,"command":command,"stdout":proc.stdout[-20000:],"stderr":proc.stderr[-20000:],"artifact":None}
     except subprocess.TimeoutExpired as exc:
         return {"status":"timeout","command":command,"stdout":str(exc.stdout or "")[-20000:],"stderr":str(exc.stderr or "")[-20000:]}

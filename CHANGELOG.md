@@ -13,6 +13,9 @@
 - Added modular platform metadata for all requested console generations and host destinations, with explicit SDK and compilation limits.
 - Added read-only game-project analyzer, evidence-linked compatibility findings, host tool detection, bounded safe build execution, project registry and JSON/Markdown report writer.
 - Core diagnostic modules use only Python's standard library.
+- Added responsive Console Porting Studio navigation, project registry workflow, platform comparison and build runner.
+- Codex tasks now receive structured diagnostic context and create workspace backups with changed-file reports.
+- Workspace import skips symlinks to external files; Android CMake flow runs configure and build before APK verification.
 
 ## 0.2.1
 - Busca automática por projetos de código em pastas comuns do Termux/armazenamento compartilhado.

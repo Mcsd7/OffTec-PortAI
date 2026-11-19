@@ -517,7 +517,11 @@ def make_workspace(source: Path) -> Path:
         "__pycache__", "build", "dist", "target", "bin", "obj",
         ".next", "*.apk", "*.aab", "*.dex", "*.so", "*.class",
     )
-    shutil.copytree(source, dest, ignore=ignored, symlinks=False)
+    def ignore_project_links(directory: str, names: list[str]) -> set[str]:
+        ignored_names = ignored(directory, names) or set()
+        base = Path(directory)
+        return ignored_names | {name for name in names if (base / name).is_symlink()}
+    shutil.copytree(source, dest, ignore=ignore_project_links, symlinks=False)
     return dest
 
 
@@ -637,6 +641,11 @@ def run_build(workspace: Path) -> tuple[int, str, str, Path | None]:
             )
     try:
         proc = subprocess.run(command, cwd=workspace, env=env, text=True, capture_output=True, timeout=3600, check=False)
+        if proc.returncode == 0 and Path(command[0]).name == "cmake" and "-S" in command:
+            built = subprocess.run([command[0], "--build", str(workspace / "build-android")], cwd=workspace,
+                                   env=env, text=True, capture_output=True, timeout=3600, check=False)
+            proc = subprocess.CompletedProcess(built.args, built.returncode, proc.stdout + "\n" + built.stdout,
+                                               proc.stderr + "\n" + built.stderr)
         apk = find_apk(workspace) if proc.returncode == 0 else None
         if proc.returncode == 0 and apk is None:
             return proc.returncode, proc.stdout, proc.stderr + "\nBuild terminou sem APK não vazio encontrado.", None
@@ -679,7 +688,21 @@ def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, 
     state["status"] = "reconstruindo" if "Reconstruct" in prompt else "analisando" if "analy" in prompt.lower() else "trabalhando com Codex"
     save_workspace_state(workspace, state)
     try:
+        from portai_core.codex import backup_workspace, changed_paths, file_inventory, structured_context
+        workspace = workspace.resolve(strict=True)
+        managed = WORKSPACES.resolve() in workspace.parents
+        before = file_inventory(workspace)
+        backup = backup_workspace(workspace, WORKSPACES / ".backups") if managed else None
+        if backup:
+            state["last_backup"] = str(backup)
+        try:
+            context = structured_context(workspace)
+            prompt = prompt + "\n\nStructured PortAI project and environment context (evidence only):\n" + json.dumps(context, ensure_ascii=False, indent=2)
+        except (OSError, ValueError):
+            pass
         proc = run_codex(codex, workspace, prompt, resume_id=state.get("session_id") if resume else None, sandbox=sandbox)
+        changes = changed_paths(before, file_inventory(workspace))
+        state["changed_files"] = changes
         # Codex JSONL output may include a thread.started event even if the CLI
         # version does not expose a separate session flag.
         for line in proc.stdout.splitlines():
@@ -698,6 +721,10 @@ def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, 
         console.print(Panel(proc.stdout[-16000:] or "(sem stdout)", title="SAÍDA DO CODEX", border_style="bright_red"))
         if proc.stderr:
             console.print(Panel(proc.stderr[-8000:], title="ERROS/AVISOS DO CODEX", border_style="yellow"))
+        if backup:
+            console.print(f"[dim]Backup pré-operação: {backup}[/]")
+        if changes:
+            console.print(Panel("\n".join(changes[:80]), title=f"Arquivos alterados ({len(changes)})", border_style="yellow"))
         state["last_return_code"] = proc.returncode
         state["last_output"] = proc.stdout[-4000:]
         if proc.returncode:
@@ -712,7 +739,7 @@ def codex_task(codex: str, workspace: Path, state: dict[str, Any], prompt: str, 
     except KeyboardInterrupt:
         state["status"] = "interrompido"; state["last_error"] = "Execução interrompida por Ctrl+C"
         console.print("[yellow]Execução interrompida; workspace e estado foram preservados.[/]")
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         state["status"] = "erro"; state["last_error"] = str(exc)
         console.print(f"[red]Falha ao executar Codex: {exc}[/]")
     finally:
@@ -799,6 +826,103 @@ def reconstruction_menu(source: Path | None = None, workspace: Path | None = Non
 
 def codex_port_assist() -> None:
     reconstruction_menu()
+
+
+def professional_dashboard() -> None:
+    """Compact Rich dashboard that wraps naturally on narrow Termux terminals."""
+    from portai_core.build import detect_tools
+    from portai_core.platforms import PLATFORMS
+    from portai_core.projects import load_projects
+    tools = detect_tools()
+    codex = tools["tools"].get("codex")
+    recent = load_projects(ROOT)
+    console.print(Panel(
+        Text.assemble(("OFF", "bold bright_magenta"), ("TEC", "bold magenta"),
+                      (" PORT", "bold white"), ("AI", "bold bright_magenta"),
+                      (f"  v{VERSION}", "dim")),
+        subtitle="PROFESSIONAL CONSOLE PORTING STUDIO", border_style="bright_magenta", box=box.DOUBLE))
+    table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1), expand=True)
+    table.add_column("Área", style="bright_magenta", no_wrap=True)
+    table.add_column("Estado", style="white", overflow="fold")
+    table.add_row("Ambiente", f"{sys.platform} / {tools['host']}" + (" • Termux" if tools["termux"] else ""))
+    table.add_row("Codex CLI", f"Disponível: {codex}" if codex else "Não detectado (opcional)")
+    table.add_row("Build", ", ".join(k for k,v in tools["tools"].items() if v and k in {"cmake","ninja","make","gradle","java"}) or "Nenhum build tool encontrado")
+    table.add_row("Android SDK/NDK", f"SDK {'OK' if tools['android_sdk_found'] else 'ausente'} • NDK {'OK' if tools['android_ndk_found'] else 'ausente'}")
+    table.add_row("Consoles", f"{len(PLATFORMS)} gerações listadas • SDKs oficiais/licenciados necessários")
+    table.add_row("Projetos recentes", ", ".join(Path(p["path"]).name for p in recent[:3]) or "Nenhum registrado")
+    console.print(Panel(table, title="[bold]Visão geral[/]", border_style="magenta", box=box.ROUNDED))
+    console.print("[dim]1 Analisar  2 Assistente Codex  3 Ambiente  4 Relatórios  5 Sessão Codex  6 Projetos  7 Porting Studio  0 Sair[/]")
+
+
+def project_manager_menu() -> None:
+    from portai_core.projects import load_projects, register_project
+    from portai_core.analyzer import analyze_project as analyze_game_project
+    from portai_core.reports import write_report
+    while True:
+        section("PROJECT MANAGER")
+        projects = load_projects(ROOT)
+        table = Table(box=box.SIMPLE, header_style="bold bright_magenta")
+        table.add_column("#", justify="right"); table.add_column("Projeto"); table.add_column("Caminho", overflow="fold")
+        for i, item in enumerate(projects, 1): table.add_row(str(i), item.get("name", "?"), item.get("path", "?"))
+        if projects: console.print(table)
+        choice = Prompt.ask("[a] Importar diretório  [n] Analisar recente  [0] Voltar", choices=["a", "n", "0"], default="0")
+        if choice == "0": return
+        if choice == "a":
+            raw = Prompt.ask("Diretório do projeto")
+            try:
+                record = register_project(ROOT, Path(raw))
+                console.print(f"[green]Projeto registrado:[/] {record['path']}")
+            except (OSError, ValueError) as exc: console.print(f"[red]Importação falhou: {exc}[/]")
+        elif projects:
+            raw = Prompt.ask("Número", choices=[str(i) for i in range(1, len(projects)+1)], default="1")
+            try:
+                result = analyze_game_project(projects[int(raw)-1]["path"])
+                md, js = write_report(result, REPORTS)
+                console.print(f"[green]Diagnóstico salvo:[/] {md.name} • {js.name}")
+            except (OSError, ValueError) as exc: console.print(f"[red]Análise falhou: {exc}[/]")
+
+
+def console_porting_studio() -> None:
+    from portai_core.platforms import PLATFORMS
+    from portai_core.analyzer import analyze_project as analyze_game_project
+    from portai_core.compatibility import compare_project
+    from portai_core.build import detect_tools, run_build as run_local_build
+    from portai_core.reports import write_report
+    while True:
+        section("CONSOLE PORTING STUDIO")
+        console.print("1 Plataformas  •  2 Analisar projeto  •  3 Compatibilidade  •  4 Detectar toolchains  •  5 Build local  •  0 Voltar")
+        choice = Prompt.ask("Studio", choices=["1","2","3","4","5","0"], default="0")
+        if choice == "0": return
+        if choice == "1":
+            table=Table(box=box.SIMPLE,header_style="bold bright_magenta", expand=True)
+            for col in ("Plataforma","Arquitetura","Toolchain","Estado"): table.add_column(col,overflow="fold")
+            for p in PLATFORMS: table.add_row(p.generation,p.architecture,", ".join(p.toolchains),"SDK oficial necessário")
+            console.print(table)
+        elif choice == "4":
+            data=detect_tools()
+            for name,path in data["tools"].items():
+                if path: console.print(f"[green]{name}[/] {path}")
+            console.print(f"Android SDK: {'detectado' if data['android_sdk_found'] else 'ausente'} • NDK: {'detectado' if data['android_ndk_found'] else 'ausente'} • Host: {data['host']}")
+        elif choice in {"2","3","5"}:
+            raw=Prompt.ask("Caminho do projeto")
+            try:
+                project=Path(raw).expanduser().resolve(strict=True)
+                if not project.is_dir(): raise ValueError("O caminho não é diretório")
+                if choice == "5":
+                    if Confirm.ask("Executar o build local detectado neste projeto?", default=False):
+                        result=run_local_build(project)
+                        console.print(Panel(str(result),title=f"Build: {result['status']}",border_style="green" if result['status']=="succeeded" else "yellow"))
+                        write_report({"project":str(project),"build":result,"tools":detect_tools()},REPORTS)
+                    continue
+                analysis=analyze_game_project(project)
+                if choice == "3":
+                    source=Prompt.ask("Plataforma de origem (id)",default="windows")
+                    target=Prompt.ask("Plataforma de destino (id; ex.: android, ps5, switch)",default="android")
+                    report={**analysis,**compare_project(analysis,source,target)}
+                else: report=analysis
+                md,js=write_report(report,REPORTS)
+                console.print(Panel(f"Engines: {', '.join(analysis['engines'])}\nArquivos lidos: {analysis['files_scanned']}\nSinais de APIs: {sum(len(x) for x in analysis['graphics_audio_input_signals'].values())}\nRelatório: {md.name} / {js.name}",title="Diagnóstico",border_style="bright_magenta"))
+            except (OSError,ValueError) as exc: console.print(f"[red]Operação falhou: {exc}[/]")
 
 def run_analysis() -> None:
     source = select_project()
@@ -1512,6 +1636,7 @@ def projects_menu() -> None:
         ("1", "Encontrar e analisar projetos", run_analysis),
         ("2", "Portar com Codex", codex_port_assist),
         ("3", "Histórico e relatórios", _show_project_reports),
+        ("4", "Project Manager (recentes)", project_manager_menu),
     ))
 
 
@@ -1581,6 +1706,7 @@ def menu() -> None:
             ("3", "03 — TRADUÇÃO", translation_category_menu),
             ("4", "04 — GAME PORTABILITY", game_portability_menu),
             ("5", "05 — CONFIGURAÇÕES", settings_menu),
+            ("6", "06 — CONSOLE PORTING STUDIO", console_porting_studio),
         )
         console.print("\n[bold white]ÁREAS DE TRABALHO[/]")
         _render_menu_cards(categories, {
@@ -1589,6 +1715,7 @@ def menu() -> None:
             "03 — TRADUÇÃO": "Localize conteúdo de projetos e recursos de APKs.",
             "04 — GAME PORTABILITY": "Analise engines e planeje a jornada do jogo até o Android.",
             "05 — CONFIGURAÇÕES": "Idioma, diagnóstico e informações da ferramenta.",
+            "06 — CONSOLE PORTING STUDIO": "Adaptadores de console, compatibilidade e builds locais.",
         })
         console.print("[bold bright_red]0.[/] Sair")
         choice = ask_prompt("PortAI", choices=[number for number, _name, _action in categories] + ["0"], default="1")

@@ -34,12 +34,18 @@
 - Propostas de tradução revisadas antes da aplicação, com placeholders protegidos, cópias localizadas e relatórios JSON.
 - Integração opcional com Codex CLI em uma cópia de trabalho isolada.
 - Fluxo de build que verifica se o APK gerado é válido como arquivo ZIP e contém `AndroidManifest.xml`.
+- Adaptadores informativos para PS1–PS5, Xbox clássico/360/One/Series, NES/SNES/N64/GameCube/Wii/Wii U/Switch.
+- Console Porting Studio com análise estática, comparação de destino e detecção de ferramentas locais.
+- CMake/Make/Gradle build runner com execução confirmada e distinção entre build concluído e preparação.
+- Backups ZIP da workspace antes de tarefas Codex, contexto JSON do projeto e lista dos arquivos alterados.
+- Registro local de projetos recentes e relatórios JSON/Markdown.
 
 ## Requisitos
 
 - Python 3.10 ou superior.
 - Termux em dispositivo ARM64 (ambiente recomendado).
 - `rich`, instalado pelo arquivo `requirements.txt`.
+- O núcleo de análise e compatibilidade usa apenas a biblioteca padrão do Python.
 - Codex CLI autenticado para os recursos de assistência com Codex.
 - Java, Android SDK e Gradle compatíveis com o projeto para compilar APKs.
 
@@ -73,7 +79,7 @@ Instale e autentique o Codex CLI antes de usar esse recurso:
 codex login status
 ```
 
-No PortAI, abra a opção de assistência com Codex e selecione um projeto. O aplicativo cria ou reutiliza uma cópia em `workspaces/`, preservando os arquivos originais. A partir dela, é possível solicitar análise e alterações, acompanhar a execução e iniciar o build quando o projeto oferecer suporte.
+No PortAI, abra a opção de assistência com Codex e selecione um projeto. O aplicativo cria ou reutiliza uma cópia em `workspaces/`, preservando os arquivos originais. Backups da cópia são salvos em `workspaces/.backups/` antes de cada tarefa Codex; o contexto inclui o diagnóstico estático e ferramentas detectadas.
 
 A integração depende da versão instalada do Codex CLI. Consulte `codex exec --help` se a CLI não aceitar algum comando ou opção. Evite selecionar projetos que contenham credenciais, tokens ou outros dados privados.
 
@@ -119,10 +125,13 @@ Abra **Configurações** no menu principal para escolher Português brasileiro, 
 - Um executável Linux ARM64 não é automaticamente um aplicativo Android.
 - Um APK estruturalmente válido ainda precisa ser instalado e testado no dispositivo.
 - A assistência com Codex requer autenticação e acesso ao serviço.
+- Os adaptadores de console descrevem arquiteturas e requisitos conhecidos; não incluem SDKs proprietários nem alegam compilação. Use SDK oficial autorizado.
+- A análise é heurística e limitada a 5.000 arquivos; compatibilidade deve ser confirmada com toolchain e testes no destino.
 
 ## Estrutura do projeto
 
 - `portai.py`: aplicativo de terminal.
+- `portai_core/`: adaptadores, analyzer, compatibility, builds, Codex, projetos e relatórios.
 - `game_portability.py`: análise heurística e relatórios de portabilidade de jogos.
 - `samples/demo_windows/`: exemplo didático de projeto Windows.
 - `tests/`: testes automatizados.

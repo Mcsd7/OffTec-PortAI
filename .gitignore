@@ -7,6 +7,7 @@ venv/
 reports/*
 !reports/.gitkeep
 workspaces/
+.portai-projects.json
 
 # Ferramentas e artefatos de build
 .pytest_cache/

@@ -30,3 +30,10 @@ Resultado: 6 testes passaram para os cinco idiomas, persistência, Unicode/RTL b
 
 Comando: python -m unittest discover -s tests -v
 Resultado: 43 testes passaram; os 37 testes anteriores continuam passando.
+
+OffTec PortAI 0.3.0 console diagnostics extension:
+Comando: python -m py_compile portai.py portai_core/*.py tests/*.py
+Resultado: OK
+
+Comando: python -m unittest discover -s tests -v
+Resultado no branch de implementação: 25 testes passaram. Suíte completa combinada com recursos upstream será registrada após a integração.
