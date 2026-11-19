@@ -10,6 +10,11 @@
 - Validate real authenticated analysis, JSONL streaming, saved session/report/backup, and real process interruption on Termux ARM64.
 
 ## 0.4.0 — PORTAI AGENT
+- Reformulated PORTAI Agent as a responsive local browser chat for Termux and Linux; the primary Rich menu now opens the chat directly.
+- Reused Codex CLI runtime, persistent task orchestration, backups, task reports, Build Manager, cancellation and saved-session continuation.
+- Added continuous per-conversation message queues and persistent history, JSONL/SSE response streaming, activity logs, mobile conversation history and project attachment before or during a chat.
+- Kept projects optional; project folders are routed through existing isolated workspaces. Added a loopback-only server with a per-run request token and no external web dependencies.
+- Added agent chat usage and architecture docs plus API/streaming/UI regression tests.
 - Added a separate conversational PORTAI AGENT experience with welcome screen, Codex status, ten actionable quick prompts, project selection and chat history.
 - Reused the existing Codex CLI command builders and sandbox; tasks now stream JSONL output, support interruption and resume saved Codex threads.
 - Added private, atomic task and per-project memory persistence, restart recovery, local diagnostics, compatibility context, reports and workspace backups.

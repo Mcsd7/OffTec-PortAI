@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101018"><title>PORTAI Agent — OFFTEC</title>
+  <link rel="stylesheet" href="/app.css">
+  <script>window.PORTAI_CSRF="__PORTAI_CSRF_TOKEN__";</script><script defer src="/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-mark">P</div><div><b>PORTAI <span>AGENT</span></b><small>OFFTEC · Studio de desenvolvimento</small></div><button class="icon mobile-only" id="closeSidebar" aria-label="Fechar conversas">×</button></div>
+    <button class="new-chat" id="newConversation"><span>＋</span> Nova conversa</button>
+    <div class="side-label">CONVERSAS RECENTES</div><nav id="conversationList" class="conversation-list"></nav>
+    <div class="sidebar-foot"><span class="pulse" id="sidePulse"></span><span id="sideStatus">Conectando ao Codex…</span><button class="icon" id="doctor" title="Verificar conexão" aria-label="Verificar conexão">↻</button></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><button class="icon mobile-only" id="openSidebar" aria-label="Abrir conversas">☰</button><div class="top-title"><strong>PortAI Agent</strong><span id="connection"><i class="pulse"></i> Verificando Codex</span></div><div class="top-actions"><button class="project-button" id="projectButton"><span>▱</span><span id="projectLabel">Selecionar projeto</span></button><button class="icon" id="exitAgent" title="Encerrar agente" aria-label="Encerrar agente">⏻</button></div></header>
+    <section class="chat" id="chat" aria-live="polite"><div class="messages" id="messages"></div></section>
+    <section class="task-strip hidden" id="taskStrip"><span class="spinner" id="taskSpinner"></span><div><b id="taskStage">Codex está trabalhando</b><small id="taskDetail">Acompanhe as atualizações nesta conversa</small></div><button class="tool-button hidden" id="resumeTask">Retomar</button><button class="stop-button" id="stopTask">Interromper</button></section>
+    <section class="composer-wrap"><div class="composer-card"><textarea id="composer" rows="1" placeholder="Escreva uma mensagem para o PortAI…" aria-label="Mensagem"></textarea><div class="composer-bottom"><div class="composer-tools"><button class="tool-button" id="attachProject" title="Selecionar pasta do projeto"><span>＋</span> Projeto</button><span class="hint">Enter envia · Shift+Enter quebra linha</span></div><button class="send-button" id="sendMessage" aria-label="Enviar mensagem">↑</button></div></div><div class="disclaimer">O Codex executa as tarefas no workspace autorizado. Revise as alterações antes de usá-las.</div></section>
+  </main>
+</div>
+<div class="overlay hidden" id="projectDialog" role="dialog" aria-modal="true" aria-labelledby="projectTitle"><div class="dialog"><button class="icon dialog-close" data-close="projectDialog" aria-label="Fechar">×</button><h2 id="projectTitle">Adicionar projeto</h2><p>Selecione um projeto recente ou informe o caminho absoluto da pasta. Isso pode ser feito a qualquer momento.</p><div id="recentProjects" class="recent-projects"></div><label for="projectPath">Caminho da pasta</label><div class="path-row"><input id="projectPath" placeholder="/storage/emulated/0/MeuJogo"><button class="send-button" id="selectProject">Vincular</button></div><small class="muted">No Android, conceda acesso ao armazenamento ao Termux. O projeto original não será editado diretamente.</small></div></div>
+<div class="toast" id="toast" role="status"></div>
+</body></html>

@@ -9,3 +9,11 @@ The analyzer and compatibility engine provide evidence and recommendations; neit
 `portai_core.codex_runtime` resolves the installed CLI to an absolute path and probes it with inherited authentication. If the probe confirms an Android dynamic-loader error caused by inherited `LD_LIBRARY_PATH`, it retries with only that variable removed; the Termux package wrapper then applies its own native-binary library-path handling. `/doctor` performs a real read-only Codex request in a temporary workspace. Both the Agent and legacy PortAI workspace runner use this runtime environment and skip only the Git-trust check for PortAI-authorized workspace copies. Agent runs start a process session so cancellation/timeouts terminate the wrapper and native child together. Likely credential strings are redacted before task logs are persisted.
 
 Core modules use only Python's standard library. Rich remains the CLI's sole required third-party dependency. Console width and `Console` wrapping govern compact mobile layouts.
+
+## PORTAI Agent chat web local
+
+A entrada do PORTAI Agent abre `portai_core.agent_web`, um servidor HTTP da biblioteca padrão vinculado somente a `127.0.0.1` e uma interface estática responsiva em `portai_agent_web/`. O navegador envia mensagens e eventos SSE para uma API local protegida por token aleatório por execução; não há serviço remoto nem dependência web adicional.
+
+`AgentWebService` orquestra uma fila por conversa e persiste mensagens em `PORTAI_AGENT_HOME/conversations/`. Tarefas, sessões Codex, backups e memória por projeto continuam no `AgentStore` e `AgentOrchestrator` existentes. O serviço reutiliza os construtores de comando e o ambiente detectado pelo runtime; saída JSONL do Codex é convertida em deltas, atividade e etapa observável. Projetos externos são associados ao fluxo existente de workspace isolada. Conversas iniciadas sem pasta usam um workspace dedicado vazio e podem receber projeto depois.
+
+A interface oferece conversas anteriores, mensagens contínuas, ações sugeridas, anexação pelo caminho ou projetos recentes, status do runtime, diagnóstico real, interrupção e retomada de sessão Codex. O servidor não aceita conexões remotas e não fornece um seletor de arquivos nativo do navegador: no Termux, o usuário informa o caminho absoluto ou escolhe um projeto já registrado.

@@ -48,7 +48,7 @@ console = LocalizedConsole()
 ROOT = Path(__file__).resolve().parent
 REPORTS = ROOT / "reports"
 WORKSPACES = ROOT / "workspaces"
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 MAX_FILES = 3000
 MAX_TEXT_BYTES = 1_000_000
 MAX_SCAN_DIRS = 25000
@@ -940,9 +940,9 @@ def console_porting_studio() -> None:
 
 
 def portai_agent_menu() -> None:
-    """Launch the separate PORTAI AGENT conversational experience."""
-    from portai_agent_ui import open_agent
-    open_agent(sys.modules[__name__])
+    """Launch the browser-based conversational PORTAI AGENT."""
+    from portai_core.agent_web import serve_agent_web
+    serve_agent_web(sys.modules[__name__], console)
 
 def run_analysis() -> None:
     source = select_project()
