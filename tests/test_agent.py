@@ -10,6 +10,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import portai
 import portai_agent_ui
 from portai_core.agent import AgentOrchestrator, AgentStore, classify_request, make_prompt, stream_process
+from portai_core.codex_runtime import inspect_codex
 
 class AgentTests(unittest.TestCase):
     def setUp(self): self.temp=tempfile.TemporaryDirectory(); self.root=Path(self.temp.name)
@@ -39,6 +40,31 @@ class AgentTests(unittest.TestCase):
     def test_streaming_process_delivers_live_lines(self):
         lines=[]; result=stream_process([sys.executable,"-u","-c","print('planning',flush=True); print('done',flush=True)"],self.root,on_output=lines.append)
         self.assertEqual(result["returncode"],0); self.assertEqual(lines,["planning","done"]); self.assertFalse(result["interrupted"])
+
+    def test_codex_runtime_retries_only_after_confirmed_termux_linker_error(self):
+        from portai_core import codex_runtime
+        failed=type("Result",(),{"returncode":1,"stdout":"","stderr":"CANNOT LINK EXECUTABLE node: cannot locate symbol"})()
+        passed=type("Result",(),{"returncode":0,"stdout":"codex-cli 1.2.3\n","stderr":""})()
+        node=type("Result",(),{"returncode":0,"stdout":"v26.0.0\n","stderr":""})()
+        with patch.dict("os.environ",{"LD_LIBRARY_PATH":"/termux/codex/bin"}), \
+             patch.object(codex_runtime,"resolve_codex",return_value="/usr/bin/codex"), \
+             patch.object(codex_runtime,"_runtime_info",return_value="Node.js v26.0.0 (/usr/bin/node)"), \
+             patch.object(codex_runtime,"_run",side_effect=[failed,passed,node]) as runner:
+            result=inspect_codex()
+        self.assertEqual(result["version"],"codex-cli 1.2.3")
+        self.assertNotIn("LD_LIBRARY_PATH",result["environment"])
+        self.assertEqual(result["environment_adjustment"],"Removed conflicting LD_LIBRARY_PATH after confirmed loader failure.")
+        self.assertIn("Node.js v26.0.0",result["runtime"])
+        self.assertEqual(runner.call_count,2)
+
+    def test_codex_diagnostic_does_not_log_credential_values(self):
+        from portai_core.codex_runtime import test_connection
+        secret="sk-"+"a"*24
+        executable=self.root/"codex-output"; executable.write_text(f"#!/bin/sh\nprintf '%s\\n' 'API_KEY={secret}'")
+        executable.chmod(0o700)
+        result=test_connection({"path":str(executable),"version":"fixture","environment":{}},self.root)
+        self.assertNotIn(secret,result["message"])
+        self.assertIn("[REDACTED]",result["message"])
 
     def test_streaming_process_can_be_interrupted(self):
         stop=threading.Event(); timer=threading.Timer(.3,stop.set); timer.start()
@@ -91,14 +117,37 @@ class AgentTests(unittest.TestCase):
         from io import StringIO
         output=StringIO(); previous=portai.console; portai.console=Console(file=output,width=36,force_terminal=False,color_system=None)
         try:
-            with patch.object(portai_agent_ui,"DATA_HOME",self.root/"data"), patch.object(portai_agent_ui.shutil,"which",return_value=None), patch.object(portai_agent_ui.Confirm,"ask",return_value=False):
+            with patch.object(portai_agent_ui,"DATA_HOME",self.root/"data"), \
+                 patch.object(portai_agent_ui,"inspect_codex",return_value={"installed":False,"path":None,"version":None,"runtime":None,"authentication":"no local credential detected","connection":"not tested","error":"Codex CLI não foi encontrado no PATH.","environment":{}}), \
+                 patch.object(portai_agent_ui.Prompt,"ask",return_value="/quit"):
                 portai_agent_ui.open_agent(portai)
         finally: portai.console=previous
-        self.assertIn("Olá! Sou o PortAI",output.getvalue()); self.assertIn("Codex CLI não foi encontrado",output.getvalue())
+        self.assertIn("Olá! Sou o PortAI",output.getvalue()); self.assertIn("não foi encontrado no PATH",output.getvalue())
+
+    def test_agent_doctor_rechecks_and_runs_real_connection_probe_hook(self):
+        from rich.console import Console
+        from io import StringIO
+        missing={"installed":False,"path":None,"version":None,"runtime":None,"authentication":"no local credential detected","connection":"not tested","error":"Codex indisponível","environment":{}}
+        ready={"installed":True,"path":"/usr/bin/codex","version":"codex-cli test","runtime":"Node.js test","authentication":"credential file found (validity not tested)","connection":"CLI starts; connectivity not tested","error":None,"environment":{}}
+        output=StringIO(); previous=portai.console; portai.console=Console(file=output,width=72,force_terminal=False,color_system=None)
+        try:
+            with patch.object(portai_agent_ui,"DATA_HOME",self.root/"data"), \
+                 patch.object(portai_agent_ui,"inspect_codex",side_effect=[missing,ready]), \
+                 patch.object(portai_agent_ui,"test_codex_connection",return_value={"ok":True,"message":"PORTAI_CODEX_CONNECTION_OK"}) as probe, \
+                 patch.object(portai_agent_ui.Prompt,"ask",side_effect=["/doctor","/quit"]):
+                portai_agent_ui.open_agent(portai)
+        finally: portai.console=previous
+        probe.assert_called_once()
+        self.assertIn("PORTAI_CODEX_CONNECTION_OK",output.getvalue())
+        self.assertIn("conectada",output.getvalue())
+        saved=portai_agent_ui._read_session(AgentStore(self.root/"data"))["codex_last_test"]
+        self.assertEqual(saved["status"],"passed")
+        self.assertNotIn("environment",saved)
 
     def test_agent_ui_executes_real_codex_process_and_persists_reported_answer(self):
         from rich.console import Console
         from io import StringIO
+        from portai_core import codex_runtime
         project=self.root/"DemoGame"; project.mkdir(); (project/"main.cpp").write_text("int main() {}")
         executable=self.root/"codex-fixture"
         executable.write_text("#!"+sys.executable+"\nimport json,sys\nif '--version' in sys.argv: print('codex fixture 1')\nelse:\n print(json.dumps({'type':'thread.started','thread_id':'real-fixture-session'}),flush=True)\n print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'Analysis complete with evidence'}}),flush=True)\n")
@@ -107,7 +156,7 @@ class AgentTests(unittest.TestCase):
         workspace_root=self.root/"workspaces"; reports=self.root/"reports"; app_root=self.root/"app"
         try:
             with patch.object(portai_agent_ui,"DATA_HOME",self.root/"agent-data"), \
-                 patch.object(portai_agent_ui.shutil,"which",return_value=str(executable)), \
+                 patch.object(codex_runtime.shutil,"which",return_value=str(executable)), \
                  patch.object(portai_agent_ui.Prompt,"ask",side_effect=["2",str(project),"/quit"]), \
                  patch.object(portai_agent_ui.Confirm,"ask",return_value=True), \
                  patch.object(portai,"ROOT",app_root), patch.object(portai,"WORKSPACES",workspace_root), \

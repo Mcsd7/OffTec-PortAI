@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -15,6 +16,17 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 ACTIVE = {"queued", "running"}
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"),
+    re.compile(r"(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password)\s*[:=]\s*)[^\s,;]+"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{12,}\b"),
+)
+
+
+def redact_secrets(value: str) -> str:
+    value = _SECRET_PATTERNS[0].sub(r"\1[REDACTED]", value)
+    value = _SECRET_PATTERNS[1].sub(r"\1[REDACTED]", value)
+    return _SECRET_PATTERNS[2].sub("[REDACTED]", value)
 
 
 def now() -> str:
@@ -146,7 +158,10 @@ def stream_process(command: list[str], cwd: Path, *, timeout: int=1800,
     if not command or not all(isinstance(arg,str) for arg in command): raise ValueError("Comando inválido")
     if not 1<=timeout<=7200: raise ValueError("Timeout precisa estar entre 1 e 7200 segundos")
     cwd=cwd.resolve(strict=True)
-    proc=popen_factory(command,cwd=str(cwd),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1,shell=False,env=env)
+    popen_options={"cwd":str(cwd),"stdout":subprocess.PIPE,"stderr":subprocess.STDOUT,
+                   "text":True,"bufsize":1,"shell":False,"env":env}
+    if os.name == "posix": popen_options["start_new_session"] = True
+    proc=popen_factory(command,**popen_options)
     lines: queue.Queue[str | None]=queue.Queue(maxsize=512)
     def read_output():
         try:
@@ -155,30 +170,38 @@ def stream_process(command: list[str], cwd: Path, *, timeout: int=1800,
         finally: lines.put(None)
     reader=threading.Thread(target=read_output,name="portai-agent-output",daemon=True); reader.start()
     output=[]; started=time.monotonic(); eof=False; interrupted=False; timed_out=False; termination_started=None
+    def stop_process(force: bool=False) -> None:
+        try:
+            if os.name == "posix":
+                os.killpg(proc.pid, signal.SIGKILL if force else signal.SIGTERM)
+            elif force: proc.kill()
+            else: proc.terminate()
+        except ProcessLookupError: pass
     try:
         while not eof:
             if stop_event and stop_event.is_set():
                 if not interrupted:
-                    interrupted=True; termination_started=time.monotonic(); proc.terminate()
+                    interrupted=True; termination_started=time.monotonic(); stop_process()
             if time.monotonic()-started>timeout and not timed_out:
-                timed_out=True; termination_started=time.monotonic(); proc.terminate()
+                timed_out=True; termination_started=time.monotonic(); stop_process()
             if termination_started and proc.poll() is None and time.monotonic()-termination_started>3:
-                proc.kill(); termination_started=None
+                stop_process(force=True); termination_started=None
             try: line=lines.get(timeout=.15)
             except queue.Empty:
                 if proc.poll() is not None and not reader.is_alive(): break
                 continue
             if line is None: eof=True
             else:
+                line=redact_secrets(line)
                 output.append(line)
                 if len(output)>2000: del output[:len(output)-2000]
                 if on_output: on_output(line)
     except KeyboardInterrupt:
         interrupted=True
-        proc.terminate()
+        stop_process()
     try: returncode=proc.wait(timeout=3)
     except subprocess.TimeoutExpired:
-        proc.kill(); returncode=proc.wait()
+        stop_process(force=True); returncode=proc.wait()
     reader.join(timeout=1)
     if proc.stdout: proc.stdout.close()
     return {"returncode":returncode,"output":"\n".join(output),"interrupted":interrupted,"timed_out":timed_out}
@@ -211,7 +234,7 @@ class AgentOrchestrator:
     def run(self, task_id: str, codex: str, *, codex_exec_builder: Callable,
             codex_resume_builder: Callable, on_output: Callable[[str],None] | None=None,
             stop_event: threading.Event | None=None, timeout: int=1800,
-            user_approved: bool=False) -> dict:
+            user_approved: bool=False, env: dict[str,str] | None=None) -> dict:
         task=self.store.load(task_id)
         workspace=Path(task["workspace"]).resolve(strict=True)
         if self.workspace_root not in workspace.parents:
@@ -232,10 +255,10 @@ class AgentOrchestrator:
         prompt=make_prompt(task)
         if task.get("session_id"):
             command=codex_resume_builder(codex,workspace,task["session_id"],"workspace-write")
-            command.extend(["--json",prompt])
+            command.extend(["--skip-git-repo-check","--json",prompt])
         else:
             command=codex_exec_builder(codex,workspace,prompt,"workspace-write")
-            command.insert(-1,"--json")
+            command[-1:-1]=["--skip-git-repo-check","--json"]
         tail=[]
         def consume(line: str) -> None:
             tail.append(line[:2000]); del tail[:-30]
@@ -250,7 +273,7 @@ class AgentOrchestrator:
             self.store.save(task)
             if on_output: on_output(line)
         try:
-            result=stream_process(command,workspace,timeout=timeout,on_output=consume,stop_event=stop_event)
+            result=stream_process(command,workspace,timeout=timeout,on_output=consume,stop_event=stop_event,env=env)
             task["changed_files"]=changed_paths(before,file_inventory(workspace))
             task["result"]={"returncode":result["returncode"],"output_tail":tail[-30:],"backup":str(backup)}
             task["status"]="interrupted" if result["interrupted"] else "timeout" if result.get("timed_out") else "completed" if result["returncode"]==0 else "failed"

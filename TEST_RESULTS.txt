@@ -52,3 +52,22 @@ Comando: git diff --check
 Resultado: OK
 
 Observação: o executável Codex instalado neste Termux falha ao iniciar por símbolo ausente na runtime NDK (`CANNOT LINK EXECUTABLE`). A integração real de processo foi validada por fixtures nos testes, mas uma sessão autenticada Codex e uma compilação APK real dependem de runtime Codex funcional e projeto/SDK compatíveis.
+
+OffTec PortAI 0.3.1 — diagnóstico e integração real do Codex no Termux ARM64:
+Comando: python -m unittest discover -s tests -p 'test_agent.py' -v
+Resultado: 16 testes passaram, incluindo fallback de LD_LIBRARY_PATH confirmado, diagnósticos, rechecagem `/doctor`, streaming, persistência, cancelamento e redaction.
+
+Comando: python -m unittest discover -s tests
+Resultado: 78 testes passaram.
+
+Comando: python -m py_compile portai.py portai_agent_ui.py portai_core/*.py portai_translation/*.py portai_apk_translator.py apk_build_center.py game_portability.py portai_i18n.py tests/*.py
+Resultado: OK
+
+Comando: git diff --check
+Resultado: OK
+
+Teste real (sem mocks): Codex CLI `codex-cli 0.163.0`, Node.js `v26.13.0`; a instalação autenticada respondeu `PORTAI_CODEX_CONNECTION_OK` no workspace isolado read-only. A tarefa real do Agent analisou CMake/C++, transmitiu 12 eventos JSONL, persistiu sessão/tarefa, relatório JSON/Markdown e backup, e não alterou arquivos do projeto. Uma segunda tarefa real foi interrompida após o primeiro evento; processo e estado persistido terminaram como `interrupted`.
+
+Teste da interface `/doctor` com Codex real: conexão aprovada, resultado e horário persistidos sem salvar o ambiente do processo.
+
+Observação: a instalação existente mostra aviso de duas configurações legadas ignoradas no `~/.codex/config.toml` (`approval_policy` e `sandbox_mode` para um projeto); o PortAI não altera essa configuração. Não foi feita build APK real.

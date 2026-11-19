@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 — Codex runtime fix
+- Detect Codex through an absolute executable path and report Node runtime, credential-file presence and connection-test state without exposing credentials.
+- Retry the Termux launcher only after confirming that inherited `LD_LIBRARY_PATH` causes a Node linker failure; preserve `HOME`, `PATH`, authentication and all other environment values.
+- Add `/doctor` to recheck the environment and make a real read-only connectivity request in a temporary isolated workspace.
+- Add `--skip-git-repo-check` for PortAI-authorized isolated workspaces while retaining Codex sandbox policies for normal tasks.
+- Stream Codex execution with the corrected environment, redact likely credential values in saved logs, and terminate the complete process group on cancellation/timeouts.
+- Apply the same runtime discovery, inherited environment and isolated-workspace trust handling to the existing PortAI Codex workspace runner.
+- Validate real authenticated analysis, JSONL streaming, saved session/report/backup, and real process interruption on Termux ARM64.
+
 ## 0.4.0 — PORTAI AGENT
 - Added a separate conversational PORTAI AGENT experience with welcome screen, Codex status, ten actionable quick prompts, project selection and chat history.
 - Reused the existing Codex CLI command builders and sandbox; tasks now stream JSONL output, support interruption and resume saved Codex threads.

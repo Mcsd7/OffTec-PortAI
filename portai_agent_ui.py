@@ -5,12 +5,11 @@ import json
 import os
 import queue
 import re
-import shutil
 import subprocess
 import threading
-import time
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from rich import box
 from rich.console import Group
@@ -24,6 +23,7 @@ from portai_core.agent import AgentOrchestrator, AgentStore, classify_request, c
 from portai_core.analyzer import analyze_project
 from portai_core.build import detect_tools
 from portai_core.compatibility import compare_project
+from portai_core.codex_runtime import inspect_codex, test_connection as test_codex_connection
 from portai_core.platforms import PLATFORM_INDEX
 from portai_core.projects import load_projects, register_project
 from portai_core.reports import write_report
@@ -49,6 +49,31 @@ def _write_session(store: AgentStore, data: dict) -> None: store._write(_session
 def _header(console, codex_status: str, width: int) -> None:
     logo=Text.assemble(("PORTAI ","bold white"),("AGENT","bold bright_magenta"),("  •  OFFTEC","dim"))
     console.print(Panel(logo,subtitle=f"AGENT CONSOLE  |  CODEX {codex_status}",border_style="bright_magenta",box=box.DOUBLE,padding=(0,1)))
+
+
+def _show_runtime(console, runtime: dict) -> None:
+    table=Table.grid(expand=True,padding=(0,1)); table.add_column(style="bright_magenta",no_wrap=True); table.add_column(overflow="fold")
+    authentication=runtime.get("authentication") or "não verificada"
+    authentication=authentication.replace("credential file found (validity not tested)","arquivo de credenciais detectado (validade não verificada)")
+    authentication=authentication.replace("credential environment variable found (value hidden)","credencial de ambiente detectada (valor oculto)")
+    authentication=authentication.replace("no local credential detected","nenhuma credencial local detectada")
+    authentication=authentication.replace("autenticação confirmada por teste recente","confirmada por teste recente")
+    connection={"not tested":"não testada","CLI starts; connectivity not tested":"CLI iniciado; conexão não testada",
+                "passed":"conectada","failed":"falhou"}.get(runtime.get("connection"),runtime.get("connection") or "não testada")
+    table.add_row("Instalado", "sim" if runtime.get("installed") else "não")
+    table.add_row("Executável", runtime.get("path") or "não encontrado")
+    table.add_row("Versão", runtime.get("version") or "indisponível")
+    table.add_row("Runtime", runtime.get("runtime") or "não detectada")
+    table.add_row("Autenticação", authentication)
+    table.add_row("Conexão", connection)
+    last_test={"passed":"aprovado","failed":"falhou"}.get(runtime.get("last_test"),runtime.get("last_test") or "não executado")
+    if runtime.get("last_test_at"): last_test+=f" ({runtime['last_test_at']})"
+    table.add_row("Último teste", last_test)
+    if runtime.get("environment_adjustment"):
+        table.add_row("Ajuste de ambiente", runtime["environment_adjustment"])
+    if runtime.get("error"):
+        table.add_row("Diagnóstico", runtime["error"])
+    console.print(Panel(table,title="Ambiente Codex",border_style="bright_magenta",box=box.ROUNDED))
 
 
 def _choose_project(app, console, current: Path | None) -> Path | None:
@@ -121,7 +146,7 @@ def _friendly_answer(task: dict) -> str:
     return f"Codex terminou a tarefa com estado: {task.get('status')}. Consulte o relatório para ver a saída completa."
 
 
-def _run_task(app, orchestrator: AgentOrchestrator, task: dict, codex: str, console) -> dict:
+def _run_task(app, orchestrator: AgentOrchestrator, task: dict, codex: str, console, codex_env=None) -> dict:
     command_events: queue.Queue=queue.Queue()
     finished=threading.Event(); stop=threading.Event(); result_box=[]
     logs=list(task.get("tail_log",[]))
@@ -131,7 +156,7 @@ def _run_task(app, orchestrator: AgentOrchestrator, task: dict, codex: str, cons
                 codex_exec_builder=app.codex_exec_command,
                 codex_resume_builder=app.codex_resume_command,
                 on_output=lambda line: command_events.put(line),stop_event=stop,
-                user_approved=True))
+                user_approved=True,env=codex_env))
         except BaseException as exc: result_box.append(exc)
         finally: finished.set()
     thread=threading.Thread(target=worker,name=f"portai-agent-{task['id']}",daemon=True); thread.start()
@@ -207,32 +232,46 @@ def open_agent(app) -> None:
     recovered=store.recover()
     session=_read_session(store)
     orchestrator=AgentOrchestrator(store,app.WORKSPACES,store.root/"backups")
-    codex=shutil.which("codex")
-    codex_status="indisponível"
-    if codex:
-        try:
-            probe=subprocess.run([codex,"--version"],capture_output=True,text=True,timeout=5,check=False)
-            codex_status=(probe.stdout or probe.stderr).strip() or ("pronto" if probe.returncode==0 else f"erro {probe.returncode}")
-            if probe.returncode: codex_status="erro: "+codex_status
-        except (OSError,subprocess.TimeoutExpired) as exc: codex_status=f"erro: {exc}"
+    runtime=inspect_codex()
+    previous_test=session.get("codex_last_test")
+    if previous_test:
+        runtime.update({"last_test":previous_test.get("status"),"last_test_at":previous_test.get("at"),
+                        "connection":previous_test.get("status"),"last_test_message":previous_test.get("message")})
+        if previous_test.get("status")=="passed": runtime["authentication"]="autenticação confirmada por teste recente"
+    codex=runtime.get("path")
+    codex_status=runtime.get("version") or "indisponível"
     _header(app.console,codex_status,app.console.width)
+    _show_runtime(app.console,runtime)
     app.console.print(Panel(WELCOME,title="OFFTEC • PORTAI AGENT",border_style="bright_magenta",box=box.ROUNDED))
     if recovered: app.console.print(f"[yellow]{len(recovered)} tarefa(s) em execução foram recuperadas como interrompidas.[/]")
-    if not codex:
-        app.console.print(Panel("Codex CLI não foi encontrado no PATH. Nenhuma resposta de IA será simulada. Instale/configure o Codex e execute o diagnóstico do ambiente para verificar o acesso.",title="Agente indisponível",border_style="yellow"))
-        if Confirm.ask("Abrir diagnóstico de ambiente?",default=True): app.check_environment()
-        return
-    if codex_status.startswith("erro:") or "cannot link executable" in codex_status.lower():
-        app.console.print(Panel(f"Codex CLI foi localizado, mas falhou na verificação: {codex_status}\nVerifique a instalação com `codex --version`.",title="Codex não está executável",border_style="yellow"))
-        if Confirm.ask("Abrir diagnóstico de ambiente?",default=True): app.check_environment()
-        return
+    if not codex or not runtime.get("version"):
+        app.console.print(Panel(f"Codex não está pronto: {runtime.get('error') or 'instalação não detectada'} Use /doctor para verificar novamente. Nenhuma resposta de IA será simulada.",title="Agente indisponível",border_style="yellow"))
     quick_lookup={str(index):label for index,label in enumerate(QUICK_ACTIONS,1)}
     quick_prompts={"Portar um jogo":"Quero portar meu jogo para Android.","Analisar projeto":"Analise este projeto e explique sua arquitetura e dependências.","Corrigir incompatibilidades":"Encontre e corrija incompatibilidades neste projeto.","Preparar projeto para Android":"Prepare este projeto para Android ARM64.","Preparar projeto para Windows/Linux":"Prepare este projeto para compilar em Windows ou Linux.","Trabalhar com plataformas PlayStation":"Analise o projeto para uma plataforma PlayStation e informe requisitos do SDK oficial.","Trabalhar com plataformas Xbox":"Analise o projeto para Xbox e informe requisitos do GDK oficial.","Trabalhar com plataformas Nintendo":"Analise o projeto para Nintendo e informe requisitos do SDK oficial.","Compilar projeto":"Tente compilar este projeto com as ferramentas disponíveis.","Tarefa personalizada":""}
     while True:
         _header(app.console,codex_status,app.console.width)
         _render_history(app,store,session,app.console)
-        raw=Prompt.ask("[bold bright_magenta]PortAI Agent[/]  mensagem  •  /tasks  •  /resume ID  •  /quit",default="/quit").strip()
+        raw=Prompt.ask("[bold bright_magenta]PortAI Agent[/]  mensagem  •  /doctor  •  /tasks  •  /resume ID  •  /quit",default="/quit").strip()
         if raw in {"/quit","/exit","0"}: return
+        if raw=="/doctor":
+            runtime=inspect_codex(runtime.get("path"))
+            codex=runtime.get("path")
+            codex_status=runtime.get("version") or "indisponível"
+            if runtime.get("version"):
+                with tempfile.TemporaryDirectory(prefix="codex-check-",dir=store.root) as check_dir:
+                    connection=test_codex_connection(runtime,Path(check_dir))
+                runtime["connection"]="passed" if connection["ok"] else "failed"
+                runtime["last_test"]="passed" if connection["ok"] else "failed"
+                runtime["last_test_message"]=connection["message"]
+                runtime["last_test_at"]=datetime.now(timezone.utc).isoformat(timespec="seconds")
+                session["codex_last_test"]={"status":runtime["last_test"],"message":runtime["last_test_message"],"at":runtime["last_test_at"]}
+                _write_session(store,session)
+            _show_runtime(app.console,runtime)
+            app.console.print(Panel(runtime.get("last_test_message") or runtime.get("error") or "Versão verificada; teste de conexão indisponível.",title="Diagnóstico Codex",border_style="green" if runtime.get("connection")=="passed" else "yellow"))
+            continue
+        if not codex or not runtime.get("version"):
+            app.console.print("[yellow]Codex indisponível. Use /doctor para diagnosticar novamente.[/]")
+            continue
         if raw=="/tasks":
             table=Table(box=box.SIMPLE,header_style="bold bright_magenta",expand=True)
             for name in ("ID","Tarefa","Estado","Etapa","Projeto"): table.add_column(name,overflow="fold")
@@ -273,7 +312,7 @@ def open_agent(app) -> None:
                 app.console.print(f"[red]Não foi possível preparar a tarefa: {exc}[/]"); continue
         task["messages"].append({"role":"assistant","content":"Diagnóstico local concluído; enviando contexto estruturado ao Codex.","at":task.get("last_activity")})
         store.save(task)
-        task=_run_task(app,orchestrator,task,codex,app.console)
+        task=_run_task(app,orchestrator,task,codex,app.console,runtime.get("environment"))
         report_data={"project":task["project"],"source":task.get("source"),"target":task.get("target"),"objective":task.get("objective"),"diagnostics":task.get("diagnostics"),"task":task,"result":task.get("result"),"changed_files":task.get("changed_files")}
         try:
             md,js=write_report(report_data,app.REPORTS)

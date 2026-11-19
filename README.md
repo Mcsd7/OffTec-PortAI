@@ -90,6 +90,8 @@ Na tela inicial, escolha **07 — PORTAI AGENT**. Envie uma solicitação livre,
 
 Durante a execução, o agente transmite os eventos do Codex, mostra a etapa sem inventar porcentagens e aceita `Ctrl+C` para interromper. Use `/tasks` para consultar tarefas e `/resume ID` para retomar uma sessão Codex salva. O agente executa o Build Manager quando a solicitação pede compilação; APK só é reportado se o build efetivo produzir um artefato validado.
 
+Use `/doctor` dentro do agente para redetectar o Codex, mostrar caminho/versão/runtime e testar a conexão autenticada em uma pasta temporária somente leitura. O estado e horário do último teste ficam registrados sem salvar o ambiente do processo. No Termux, se o launcher Node herdar um `LD_LIBRARY_PATH` que impeça sua inicialização, o PortAI confirma o erro, remove apenas essa variável para o processo Codex e mantém as demais variáveis de autenticação e ambiente.
+
 Tarefas e memória por projeto ficam em `~/.local/share/offtec-portai/` (ou no caminho definido por `PORTAI_AGENT_HOME`), com arquivos JSON de acesso privado. Relatórios são gravados em `reports/`; backups de execução ficam na pasta `backups/` do diretório de dados. Se `codex --version` falhar, o agente para sem inventar respostas e oferece o diagnóstico do ambiente.
 
 ## Universal Translation Engine

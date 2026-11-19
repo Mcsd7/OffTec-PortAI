@@ -179,7 +179,9 @@ class PortAITests(unittest.TestCase):
             executable.write_text(
                 "#!/usr/bin/env python3\n"
                 "import os, sys\n"
+                "if os.environ.get('ASSERT_SKIP') and '--skip-git-repo-check' not in sys.argv: sys.exit(98)\n"
                 "print(os.environ.get('FAKE_STDOUT', ''), end='')\n"
+                "print(os.environ.get('FAKE_RUNTIME_ENV', ''), end='')\n"
                 "print(os.environ.get('FAKE_STDERR', ''), end='', file=sys.stderr)\n"
                 "sys.exit(int(os.environ.get('FAKE_EXIT', '0')))\n",
                 encoding="utf-8",
@@ -198,6 +200,13 @@ class PortAITests(unittest.TestCase):
                         self.assertEqual(proc.returncode, code)
                         self.assertEqual(proc.stdout, stdout)
                         self.assertEqual(proc.stderr, stderr)
+                os.environ["ASSERT_SKIP"] = "1"
+                os.environ["FAKE_RUNTIME_ENV"] = "preserved-env"
+                os.environ["FAKE_STDOUT"] = ""
+                os.environ["FAKE_EXIT"] = "0"
+                proc = portai.run_codex(str(executable), workspace, "verify runtime")
+                self.assertEqual(proc.returncode, 0)
+                self.assertEqual(proc.stdout, "preserved-env")
             argv = portai.codex_exec_command(str(executable), workspace, "prompt")
             self.assertEqual(argv[argv.index("--cd") + 1], str(workspace))
             self.assertNotIn("--ask-for-approval", argv)

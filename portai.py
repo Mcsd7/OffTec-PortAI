@@ -48,7 +48,7 @@ console = LocalizedConsole()
 ROOT = Path(__file__).resolve().parent
 REPORTS = ROOT / "reports"
 WORKSPACES = ROOT / "workspaces"
-VERSION = "0.4.0"
+VERSION = "0.3.1"
 MAX_FILES = 3000
 MAX_TEXT_BYTES = 1_000_000
 MAX_SCAN_DIRS = 25000
@@ -576,14 +576,20 @@ def codex_resume_command(codex: str, workspace: Path, session_id: str | None = N
 
 
 def run_codex(codex: str, workspace: Path, prompt: str, timeout: int = 1800, resume_id: str | None = None, sandbox: str = "workspace-write"):
-    """Run Codex with inherited credentials/network environment and split output."""
+    """Run Codex with its discovered runtime environment and split output."""
     workspace = workspace.resolve(strict=True)
     if not workspace.is_dir() or WORKSPACES.resolve() not in workspace.parents:
         raise ValueError(f"Diretório de trabalho inválido ou fora de workspaces/: {workspace}")
-    command = codex_resume_command(codex, workspace, resume_id, sandbox) if resume_id is not None else codex_exec_command(codex, workspace, prompt, sandbox)
+    from portai_core.codex_runtime import inspect_codex
+    runtime = inspect_codex(codex)
+    executable = runtime.get("path") or codex
+    command = codex_resume_command(executable, workspace, resume_id, sandbox) if resume_id is not None else codex_exec_command(executable, workspace, prompt, sandbox)
+    if "--skip-git-repo-check" not in command:
+        if resume_id is not None: command.append("--skip-git-repo-check")
+        else: command.insert(-1, "--skip-git-repo-check")
     return subprocess.run(
         command, cwd=str(workspace), text=True, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, timeout=timeout, check=False,
+        stderr=subprocess.PIPE, timeout=timeout, check=False, env=runtime.get("environment"),
     )
 
 
